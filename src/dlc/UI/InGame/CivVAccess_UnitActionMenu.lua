@@ -1249,6 +1249,45 @@ function UnitActionMenu.commitByType(unit, types)
     return false
 end
 
+-- Commit the first available action row `matches(action)` accepts, at the
+-- unit's plot, through the same isAvailable / commitSelfPlot path as the
+-- Tab menu (so the confirmation speaks the same). Targeted actions are
+-- skipped: they need a target picked in the mod's target mode. Returns the
+-- committed row, or nil when nothing matching is available. Used by the
+-- MCP bridge, which matches rows by Type and by build or promotion.
+function UnitActionMenu.commitWhere(unit, matches)
+    if unit == nil or GameInfoActions == nil then
+        return nil
+    end
+    for iAction = 0, #GameInfoActions do
+        local action = GameInfoActions[iAction]
+        if
+            action ~= nil
+            and matches(action)
+            and not isTargetedAction(action.Type)
+            and isAvailable(unit, iAction, action)
+        then
+            commitSelfPlot(action, { iAction = iAction })
+            return action
+        end
+    end
+    return nil
+end
+
+-- What the Tab menu would offer for `unit` right now, as {type, label}
+-- rows: plain actions, then promotions, then builds. Same collection the
+-- menu builds, so a refusal can tell the player what IS possible.
+function UnitActionMenu.availableActions(unit)
+    local buckets = collectActions(unit)
+    local out = {}
+    for _, bucket in ipairs({ buckets.plain, buckets.promotions, buckets.builds }) do
+        for _, entry in ipairs(bucket) do
+            out[#out + 1] = { type = entry.action.Type, label = actionLabel(entry.action) }
+        end
+    end
+    return out
+end
+
 -- Opens the action menu for `unit`. No-op with no unit. Speaks the
 -- "no actions" token and stays closed when every action is filtered.
 -- Idempotent: an existing UnitActionMenu handler on the stack is

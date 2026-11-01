@@ -28,9 +28,10 @@ import time
 import uuid
 
 import civ5_geometry as geometry
+import civ5_notes as notes
 
 PROTOCOL_FALLBACK = "2024-11-05"
-SERVER_INFO = {"name": "civ5-access", "version": "0.2.0"}
+SERVER_INFO = {"name": "civ5-access", "version": "0.3.0"}
 RESPONSE_TIMEOUT_SECONDS = 10.0
 POLL_INTERVAL_SECONDS = 0.05
 
@@ -99,6 +100,30 @@ city-states. These serve planning conversations -- what to build next,
 which way to research -- so lay out the options and their trade-offs and
 leave the decision to the player.
 
+Acting for the player: civ5_set_production, civ5_purchase,
+civ5_city_automation, civ5_set_research and civ5_unit_action carry out
+commands in the game (unit ids come from civ5_units). Use them only for
+what the player asked for in this conversation, or for a proposal of
+yours they said yes to -- never on your own initiative, and never to
+settle something they did not ask about. Before spending gold or faith,
+say the cost and get a yes unless they already named exactly that
+purchase. Each reply says whether the game confirmed the change
+(confirmed true/false); tell the player plainly what happened, and pass a
+refusal's reason on as it is. The game speaks the result too, so keep
+your own confirmation short. If an action gets no reply it may still land
+when the game picks it up: check with a read tool before trying again. A
+production or research chooser the player has open keeps showing the old
+choice until they close it. Attacks are not offered; they stay with the
+player.
+
+Game notes: call civ5_game_notes at the start of a conversation about the
+game -- the player starts new chats without history, and the notes carry
+their strategy, standing orders, open questions, recent decisions and
+your recent actions. Follow the standing orders in your advice and
+actions. When the player states a decision, a strategy or a standing
+order, record it with civ5_game_notes_update in their own words; notes
+hold intent and history, never game facts, which you always read live.
+
 Anchors: every spatial tool accepts an optional "anchor" argument --
 "capital" (default), "cursor" (the player's own map cursor), any known city
 name, or "x,y". All distanceFromAnchor / directionFromAnchor fields are
@@ -158,6 +183,8 @@ def documents_dir():
 RPC_DIR = os.environ.get("CIVVACCESS_RPC_DIR") or os.path.join(
     documents_dir(), "My Games", "Sid Meier's Civilization 5", "CivVAccess", "rpc"
 )
+# Per-game notes live next to the mailbox, outside the game install.
+NOTES_DIR = os.environ.get("CIVVACCESS_NOTES_DIR") or os.path.dirname(RPC_DIR)
 REQUEST_PATH = os.path.join(RPC_DIR, "request.txt")
 RESPONSE_PATH = os.path.join(RPC_DIR, "response.json")
 
@@ -643,6 +670,209 @@ TOOLS = [
         ),
         "inputSchema": {"type": "object", "properties": {}, "required": []},
     },
+    {
+        "name": "civ5_units",
+        "description": (
+            "The player's own units: id (what civ5_unit_action takes), type, "
+            "tile, land/sea/air, military or civilian, moves left, health "
+            "when damaged, current activity (fortified, sleeping, automated, "
+            "building...), whether it is waiting for orders, promotion "
+            "ready, and an available upgrade with its cost."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "filter": {
+                    "type": "string",
+                    "description": (
+                        "Optional: 'idle' (waiting for orders), 'military', "
+                        "'civilian', or a unit type such as 'Worker'."
+                    ),
+                }
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "civ5_game_notes",
+        "description": (
+            "This game's notes, kept between conversations: the player's "
+            "strategy and victory goal, per-area directives, standing "
+            "orders, open questions, decisions and short turn digests, plus "
+            "the last actions you carried out. Read it at the start of a "
+            "conversation about the game. A reloadWarning means an earlier "
+            "save was loaded and later entries did not happen."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "civ5_game_notes_update",
+        "description": (
+            "Record the player's intent in this game's notes: what they "
+            "decide, the strategy they choose, standing orders ('always keep "
+            "a warrior in each city'), open questions, or a one-to-three "
+            "sentence digest of a turn. Notes hold intent and history only, "
+            "never game facts, which are always read live. Write the player's "
+            "words faithfully; do not strengthen or reinterpret them."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "set_strategy",
+                        "set_directive",
+                        "add_standing_order",
+                        "remove_standing_order",
+                        "add_question",
+                        "resolve_question",
+                        "add_decision",
+                        "add_turn_digest",
+                    ],
+                },
+                "text": {"type": "string", "description": "The note text."},
+                "victory_goal": {
+                    "type": "string",
+                    "description": "set_strategy only: science, culture, diplomatic, domination, or undecided.",
+                },
+                "domain": {
+                    "type": "string",
+                    "description": (
+                        "set_directive only: expansion, production, research, "
+                        "policies, religion, military, diplomacy or economy. "
+                        "Empty text clears the directive."
+                    ),
+                },
+                "id": {
+                    "type": "integer",
+                    "description": "remove_standing_order / resolve_question: the item number.",
+                },
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "civ5_set_production",
+        "description": (
+            "ACTION. Choose what a city builds. mode 'replace' (default) "
+            "clears the queue and builds this; 'append' adds it to the end "
+            "of the queue (6 max); 'first' puts it in front and keeps the "
+            "rest. Refused when the city cannot build it now. The game "
+            "speaks the change."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "city": {"type": "string", "description": "The player's city name."},
+                "item": {
+                    "type": "string",
+                    "description": "Unit, building, wonder, project or process, e.g. 'Granary', 'Worker', 'Wealth'.",
+                },
+                "mode": {"type": "string", "enum": ["replace", "append", "first"]},
+            },
+            "required": ["city", "item"],
+        },
+    },
+    {
+        "name": "civ5_purchase",
+        "description": (
+            "ACTION, spends gold or faith. Buy a unit, building or project in "
+            "a city. Under Vox Populi buying a building with gold invests in "
+            "it instead (the remaining cost drops; the reply says invested). "
+            "State the cost to the player and get a yes first unless they "
+            "already asked for exactly this purchase."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "city": {"type": "string"},
+                "item": {"type": "string"},
+                "currency": {"type": "string", "enum": ["gold", "faith"]},
+            },
+            "required": ["city", "item"],
+        },
+    },
+    {
+        "name": "civ5_city_automation",
+        "description": (
+            "ACTION. Hand a city's production choices to the game's own city "
+            "AI ('on'), or take them back ('off'). The same switch as "
+            "Automate production on the city screen. The current queue is kept."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "city": {"type": "string"},
+                "state": {"type": "string", "enum": ["on", "off"]},
+            },
+            "required": ["city", "state"],
+        },
+    },
+    {
+        "name": "civ5_set_research",
+        "description": (
+            "ACTION. Choose research. The goal may be a tech or something it "
+            "unlocks ('Library', 'Swordsman'); a distant goal queues its "
+            "missing prerequisites. mode 'replace' (default) researches it "
+            "now, 'append' adds it to the end of the queue, 'free' takes it "
+            "as the free technology the game is offering."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "goal": {"type": "string"},
+                "mode": {"type": "string", "enum": ["replace", "append", "free"]},
+            },
+            "required": ["goal"],
+        },
+    },
+    {
+        "name": "civ5_unit_action",
+        "description": (
+            "ACTION. Order one of the player's units (id from civ5_units). "
+            "Actions: move (needs x, y; refused onto an enemy, through closed "
+            "borders, or when unreachable, with the reason), fortify (sleeps "
+            "if the unit cannot fortify), sleep, sentry, skip, heal, wake, "
+            "stop (cancel orders or automation), explore (automate "
+            "exploring), automate (automate a worker), found (found a city "
+            "here), upgrade (spends gold), build (needs build, e.g. 'Farm', "
+            "'Mine', 'Road'), promote (needs promotion). Attacks are not "
+            "offered; they stay with the player. A refusal lists what the "
+            "unit can do now. Selects the unit in game; the game speaks the "
+            "result."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "unit": {"type": "integer", "description": "Unit id from civ5_units."},
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "move",
+                        "fortify",
+                        "sleep",
+                        "sentry",
+                        "skip",
+                        "heal",
+                        "wake",
+                        "stop",
+                        "explore",
+                        "automate",
+                        "found",
+                        "upgrade",
+                        "build",
+                        "promote",
+                    ],
+                },
+                "x": _COORD_ARG,
+                "y": _COORD_ARG,
+                "build": {"type": "string", "description": "build only: improvement, route or build name."},
+                "promotion": {"type": "string", "description": "promote only: promotion name."},
+            },
+            "required": ["unit", "action"],
+        },
+    },
 ]
 
 # Queries the Lua bridge answers in full; the server relays the optional
@@ -653,7 +883,23 @@ PASSTHROUGH_TOOLS = {
     "civ5_tech_plan": ("tech_plan", "target"),
     "civ5_turn_summary": ("turn_summary", "messages"),
     "civ5_diplomacy": ("diplomacy", None),
+    "civ5_units": ("units", "filter"),
 }
+
+ACTION_TOOLS = {
+    "civ5_set_production",
+    "civ5_purchase",
+    "civ5_city_automation",
+    "civ5_set_research",
+    "civ5_unit_action",
+}
+
+NO_REPLY_TO_ACTION = (
+    "No reply from the game within {timeout:.0f} seconds. The command may "
+    "still have gone through once the game picks it up: check the result "
+    "with a read tool (civ5_city_details, civ5_units, civ5_tech_plan) "
+    "before trying again, and never repeat it blindly."
+)
 
 GEOMETRY_TOOLS = {
     "civ5_map_overview",
@@ -824,6 +1070,102 @@ def call_render_tool(arguments):
     ], False
 
 
+def _game_info():
+    """The game_info envelope (turn, coordinate origin, setup fields), or
+    an error tuple for call_tool to return."""
+    envelope = game_query("game_info")
+    if envelope is None:
+        return None, (NO_GAME_MESSAGE.format(timeout=RESPONSE_TIMEOUT_SECONDS), True)
+    if not envelope.get("ok"):
+        return None, (json.dumps(envelope, ensure_ascii=False, indent=2), True)
+    return envelope, None
+
+
+def _notes_for(envelope):
+    return notes.GameNotes(NOTES_DIR, envelope["data"])
+
+
+def _action_args(name, arguments, origin):
+    """Positional request fields for an action, after the turn."""
+    if name == "civ5_set_production":
+        return [arguments["city"], arguments["item"], arguments.get("mode") or "replace"]
+    if name == "civ5_purchase":
+        return [arguments["city"], arguments["item"], arguments.get("currency") or "gold"]
+    if name == "civ5_city_automation":
+        return [arguments["city"], arguments["state"]]
+    if name == "civ5_set_research":
+        return [arguments["goal"], arguments.get("mode") or "replace"]
+    action = arguments["action"]
+    fields = [int(arguments["unit"]), action]
+    if action == "move":
+        if arguments.get("x") is None or arguments.get("y") is None:
+            raise geometry.PlaceError("move needs x and y")
+        px, py = float(arguments["x"]), float(arguments["y"])
+        if origin is not None:
+            x, y = geometry.engine_coords(origin, px, py)
+        else:
+            x, y = int(px), int(py)
+        fields += [x, y]
+    elif action == "build":
+        if not arguments.get("build"):
+            raise geometry.PlaceError("build needs the build name")
+        fields.append(arguments["build"])
+    elif action == "promote":
+        if not arguments.get("promotion"):
+            raise geometry.PlaceError("promote needs the promotion name")
+        fields.append(arguments["promotion"])
+    return fields
+
+
+def call_action_tool(name, arguments):
+    """Run one action: read the current turn, send the command for exactly
+    that turn (the game refuses it if the turn moved on), journal it in the
+    game's notes, and relay the reply. Never retried: an action that timed
+    out may still land."""
+    info, err = _game_info()
+    if err is not None:
+        return err
+    origin = info.get("coordOrigin")
+    try:
+        fields = _action_args(name, arguments, origin)
+    except geometry.PlaceError as e:
+        return str(e), True
+    query = name[len("civ5_"):]
+    envelope = game_query(query, info["turn"], *fields)
+    game_notes = _notes_for(info)
+    if envelope is None:
+        game_notes.journal(name, arguments, None, "no reply")
+        return NO_REPLY_TO_ACTION.format(timeout=RESPONSE_TIMEOUT_SECONDS), True
+    ok = bool(envelope.get("ok"))
+    summary = envelope.get("data") if ok else envelope.get("error")
+    game_notes.journal(name, arguments, ok, summary)
+    envelope.pop("coordOrigin", None)
+    envelope = geometry.convert_payload(envelope, origin)
+    return json.dumps(envelope, ensure_ascii=False, indent=2), not ok
+
+
+def call_notes_tool(name, arguments):
+    info, err = _game_info()
+    if err is not None:
+        return err
+    game_notes = _notes_for(info)
+    try:
+        if name == "civ5_game_notes":
+            result = game_notes.read()
+            result["recentActions"] = game_notes.recent_actions()
+        else:
+            result = game_notes.update(
+                arguments["action"],
+                text=arguments.get("text"),
+                item_id=arguments.get("id"),
+                domain=arguments.get("domain"),
+                victory_goal=arguments.get("victory_goal"),
+            )
+    except notes.NotesError as e:
+        return str(e), True
+    return json.dumps(result, ensure_ascii=False, indent=2), False
+
+
 def call_tool(name, arguments):
     """Returns (content, is_error); content is a string (wrapped as one
     text block) or a ready content list (e.g. an image plus its legend)."""
@@ -839,6 +1181,10 @@ def call_tool(name, arguments):
         )
     elif name in GEOMETRY_TOOLS:
         return call_geometry_tool(name, arguments)
+    elif name in ACTION_TOOLS:
+        return call_action_tool(name, arguments)
+    elif name in ("civ5_game_notes", "civ5_game_notes_update"):
+        return call_notes_tool(name, arguments)
     elif name in PASSTHROUGH_TOOLS:
         query, arg_name = PASSTHROUGH_TOOLS[name]
         value = arguments.get(arg_name) if arg_name else None

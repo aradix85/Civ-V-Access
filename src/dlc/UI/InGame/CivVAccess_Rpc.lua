@@ -15,6 +15,17 @@
 -- IsRevealed for the active team so a reply never contains anything the
 -- player couldn't know from the game itself.
 --
+-- Actions are a separate whitelist (Rpc._actions, filled by the
+-- CivVAccess_Bridge* files): commands the player asked the assistant to
+-- carry out, issued through the same net messages the mod's own screens
+-- send. The dispatcher only runs one on the active player's own turn, and
+-- only when the request names the current turn, so a request picked up
+-- late (after a reload or an end of turn) is refused instead of acting on
+-- a game state nobody asked about. Net messages land on a later tick, so
+-- an action may return a verify function with its result: the reply is
+-- held until verify observes the change, or until VERIFY_FRAMES pass and
+-- the reply goes out marked unconfirmed.
+--
 -- Request: one line of tab-separated fields: <id> <query> [<arg> ...].
 -- Response: a JSON envelope {id, turn, activePlayer, ok, data | error}.
 -- The id is caller-chosen and echoed verbatim so the server can discard
@@ -30,6 +41,10 @@ Rpc = {}
 local SUBSCRIBER_NAME = "Rpc"
 -- find_resource caps its plot list; totals are always reported in full.
 local MAX_RESULT_PLOTS = 25
+-- How long an action's reply waits for its effect to show up in the game
+-- state. A single-player net message lands on the next game update; the
+-- margin covers a slow frame and multiplayer round trips.
+local VERIFY_FRAMES = 120
 
 -- === JSON encoder ===
 -- Encode-only; requests arrive in the flat tab-separated form above, so
@@ -116,6 +131,7 @@ local function resolveRow(tableName, prefix, arg)
     end
     return nil
 end
+Rpc.resolveRow = resolveRow
 
 -- === Queries ===
 -- Each takes string args straight from the request line and returns a
@@ -738,7 +754,90 @@ local function respond(envelope)
     end
 end
 
+-- The action reply waiting on its verify function, if any. Holding it
+-- here keeps rpc.poll untouched until the reply is out, so requests stay
+-- strictly one at a time.
+local pendingAction = nil
+
+local actions = {}
+Rpc._actions = actions
+
+-- Why an action may not run right now, or nil. The same gates every
+-- write path in the mod applies: the player's own turn, and no net
+-- messages being processed (the AI turn holds the game-core lock).
+local function actionRefusal(turnArg)
+    if not Players[Game.GetActivePlayer()]:IsTurnActive() then
+        return "it is not your turn"
+    end
+    if Game.IsProcessingMessages() then
+        return "the game is processing the turn; try again in a moment"
+    end
+    local turn = Game.GetGameTurn()
+    if tonumber(turnArg) ~= turn then
+        return "request was for turn " .. tostring(turnArg) .. " but it is now turn " .. turn
+    end
+    return nil
+end
+
+local function finishPending(verified)
+    local p = pendingAction
+    pendingAction = nil
+    local data = p.envelope.data
+    if verified == nil then
+        data.confirmed = false
+    else
+        data.confirmed = true
+        for k, v in pairs(verified) do
+            data[k] = v
+        end
+    end
+    respond(p.envelope)
+end
+
+local function advancePending()
+    local p = pendingAction
+    local okCall, verified = pcall(p.verify)
+    if not okCall then
+        Log.error("Rpc: verify for '" .. p.name .. "' failed: " .. tostring(verified))
+        p.envelope.data.verifyError = (tostring(verified):gsub("^.-:%d+: ", ""))
+        finishPending(nil)
+        return
+    end
+    if verified ~= nil then
+        finishPending(verified)
+    elseif TickPump.frame() - p.startFrame >= VERIFY_FRAMES then
+        finishPending(nil)
+    end
+end
+
+local function runAction(envelope, name, fields)
+    local refusal = actionRefusal(fields[3])
+    if refusal ~= nil then
+        envelope.ok = false
+        envelope.error = refusal
+        return true
+    end
+    local okCall, result, verify = pcall(actions[name], unpack(fields, 4))
+    if not okCall then
+        Log.error("Rpc: action '" .. name .. "' failed: " .. tostring(result))
+        envelope.ok = false
+        envelope.error = (tostring(result):gsub("^.-:%d+: ", ""))
+        return true
+    end
+    envelope.ok = true
+    envelope.data = result
+    if verify == nil then
+        return true
+    end
+    pendingAction = { envelope = envelope, verify = verify, name = name, startFrame = TickPump.frame() }
+    return false
+end
+
 function Rpc._poll()
+    if pendingAction ~= nil then
+        advancePending()
+        return
+    end
     local line = rpc.poll()
     if line == nil then
         return
@@ -772,6 +871,12 @@ function Rpc._poll()
             mapHeight = gridH,
             wrapX = Map.IsWrapX(),
         }
+    end
+    if actions[name] ~= nil then
+        if runAction(envelope, name, fields) then
+            respond(envelope)
+        end
+        return
     end
     local fn = queries[name]
     if fn == nil then

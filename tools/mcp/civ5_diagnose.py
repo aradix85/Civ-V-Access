@@ -38,6 +38,13 @@ DEPLOYED_FILES = [
     "CivVAccess_QueryTech.lua",
     "CivVAccess_QueryTurn.lua",
     "CivVAccess_QueryDiplo.lua",
+    "CivVAccess_QueryGame.lua",
+    "CivVAccess_Rpc.lua",
+    "CivVAccess_UnitActionMenu.lua",
+    "CivVAccess_BridgeCore.lua",
+    "CivVAccess_BridgeCity.lua",
+    "CivVAccess_BridgeTech.lua",
+    "CivVAccess_BridgeUnit.lua",
 ]
 
 LUA_PROBLEM = re.compile(r"runtime error|syntax error|stack traceback|\[ERROR\]|\[WARN\]", re.IGNORECASE)

@@ -18,6 +18,9 @@ New Features and improvements:
 - The MCP bridge can plan research: what each tech unlocks and the path to a chosen tech, building or unit.
 - The MCP bridge can summarize your last turn: notifications, the turn log and recent messages.
 - The MCP bridge can read diplomacy: relations with civilizations and city-state influence and quests.
+- The MCP bridge can list your units with their orders, health, promotions and upgrades.
+- The MCP bridge can carry out commands you ask for: production, purchases, city automation, research and unit orders.
+- The MCP bridge keeps notes per game: your strategy, standing orders and decisions, readable as a text file.
 
 ## [2.4.0] - 2026-10-22
 
