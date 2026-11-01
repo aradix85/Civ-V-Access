@@ -9,8 +9,9 @@
 -- resolutions in force. Members and proposers the player has not met stay
 -- unnamed; a resolution's own name and details are the game's text, which
 -- the World Congress screen shows as is (it can name a civilization the
--- player has not met, such as the target of sanctions). Read only; voting
--- and proposing stay with the screen.
+-- player has not met, such as the target of sanctions). Each proposal
+-- carries the id and direction the league_vote action takes, and for a
+-- proposal that picks a civilization the choices on offer.
 
 local queries = Rpc._queries
 
@@ -24,13 +25,30 @@ local function details(league, me, resolutionType, id, choice)
     return TextFilter.filter(text)
 end
 
+-- What a voter can pick on a proposal that chooses a civilization (the
+-- league_vote action takes one of these); nil for a yes/no proposal.
+local function voterChoices(league, resolutionType, me)
+    local info = GameInfo.Resolutions[resolutionType]
+    if info.VoterDecision == "RESOLUTION_DECISION_YES_OR_NO" then
+        return nil
+    end
+    local decision = GameInfo.ResolutionDecisions[info.VoterDecision]
+    local out = {}
+    for _, choiceId in ipairs(league:GetChoicesForDecision(decision.ID, me)) do
+        out[#out + 1] = TextFilter.filter(league:GetTextForChoice(decision.ID, choiceId))
+    end
+    return out
+end
+
 local function proposalEntry(league, me, raw, direction, onHold)
     local choice = raw.ProposerDecision or NO_CHOICE
     local entry = {
+        id = raw.ID,
         name = TextFilter.filter(league:GetResolutionName(raw.Type, raw.ID, choice, false)),
         direction = direction,
         onHold = onHold or nil,
         details = details(league, me, raw.Type, raw.ID, choice),
+        choices = voterChoices(league, raw.Type, me),
     }
     if raw.ProposalPlayer ~= nil and raw.ProposalPlayer >= 0 then
         entry.proposedBy = Rpc.civLabel(raw.ProposalPlayer)

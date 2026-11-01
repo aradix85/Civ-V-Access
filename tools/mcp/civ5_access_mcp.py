@@ -102,8 +102,12 @@ which way to research -- so lay out the options and their trade-offs and
 leave the decision to the player.
 
 Acting for the player: civ5_set_production, civ5_purchase,
-civ5_city_automation, civ5_set_research and civ5_unit_action carry out
-commands in the game (unit ids come from civ5_units). Use them only for
+civ5_city_automation, civ5_set_research, civ5_unit_action,
+civ5_adopt_policy, civ5_found_pantheon, civ5_league_vote,
+civ5_establish_trade_route and civ5_move_spy carry out commands in the
+game (unit ids come from civ5_units, spies from civ5_espionage, proposals
+from civ5_world_congress). Policies, pantheons and votes are permanent:
+send them only when the player named exactly that choice. Use them only for
 what the player asked for in this conversation, or for a proposal of
 yours they said yes to -- never on your own initiative, and never to
 settle something they did not ask about. Before spending gold or faith,
@@ -847,6 +851,91 @@ TOOLS = [
         },
     },
     {
+        "name": "civ5_adopt_policy",
+        "description": (
+            "ACTION, permanent. Adopt a social policy, take a tenet of your "
+            "ideology, or open a policy branch, by name. Refused unless the "
+            "game allows it now (enough culture or a free policy, "
+            "prerequisites met). Only on the player's explicit choice."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "civ5_found_pantheon",
+        "description": (
+            "ACTION, permanent. Found a pantheon with the named belief; the "
+            "beliefs on offer are in civ5_religion. Only on the player's "
+            "explicit choice."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"belief": {"type": "string"}},
+            "required": ["belief"],
+        },
+    },
+    {
+        "name": "civ5_league_vote",
+        "description": (
+            "ACTION, final. Cast delegates on a World Congress proposal in "
+            "session: proposal id and direction from civ5_world_congress, the "
+            "number of delegates, and the choice: yes or no, or for a proposal "
+            "that picks a civilization one of its listed choices. Delegates "
+            "not cast stay with the player. Only on the player's explicit "
+            "instruction."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "proposal": {"type": "integer"},
+                "direction": {"type": "string", "enum": ["enact", "repeal"]},
+                "delegates": {"type": "integer"},
+                "choice": {"type": "string"},
+            },
+            "required": ["proposal", "delegates", "choice"],
+        },
+    },
+    {
+        "name": "civ5_establish_trade_route",
+        "description": (
+            "ACTION. Send a caravan or cargo ship (id from civ5_units) on a "
+            "trade route to the named city, from where it stands. kind "
+            "(international, food, production) is needed when a city of yours "
+            "takes both a food and a production route. A refusal lists the "
+            "destinations that unit can reach."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "unit": {"type": "integer"},
+                "city": {"type": "string"},
+                "kind": {"type": "string", "enum": ["international", "food", "production"]},
+            },
+            "required": ["unit", "city"],
+        },
+    },
+    {
+        "name": "civ5_move_spy",
+        "description": (
+            "ACTION. Move a spy (name or id from civ5_espionage) to a city or "
+            "to 'hideout'. role 'diplomat' only for the capital of a major "
+            "civilization you are at peace with; default spy. A refusal lists "
+            "where that spy can go."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "spy": {"type": "string"},
+                "target": {"type": "string"},
+                "role": {"type": "string", "enum": ["spy", "diplomat"]},
+            },
+            "required": ["spy", "target"],
+        },
+    },
+    {
         "name": "civ5_unit_action",
         "description": (
             "ACTION. Order one of the player's units (id from civ5_units). "
@@ -987,6 +1076,46 @@ TOOLS = [
         "inputSchema": {"type": "object", "properties": {}, "required": []},
     },
     {
+        "name": "civ5_combat_odds",
+        "description": (
+            "What one of your units (id from civ5_units) would do attacking "
+            "the tile at x, y: the combat preview the game shows (odds, "
+            "strengths, expected damage both ways, modifiers) for its ranged "
+            "attack, or melee when it has none or melee is true. Says when "
+            "the tile is not visible or holds no enemy, and the distance. "
+            "Read only: attacking stays with the player."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "unit": {"type": "integer"},
+                "x": {"type": "number"},
+                "y": {"type": "number"},
+                "melee": {"type": "boolean"},
+            },
+            "required": ["unit", "x", "y"],
+        },
+    },
+    {
+        "name": "civ5_espionage",
+        "description": (
+            "Your spies (name, id, rank, state, turns left, city) and the "
+            "cities the game reports on with their potential and which of "
+            "your spies is there. Unmet civilizations stay unnamed."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "civ5_religion",
+        "description": (
+            "Faith and faith per turn, your pantheon belief or, while one can "
+            "be founded, the pantheon beliefs on offer; your religion with its "
+            "holy city and beliefs (name and effect); which religions your "
+            "cities follow; how many religions can still be founded."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
         "name": "civ5_explain",
         "description": (
             "What something does, from this game's own rules text (Vox "
@@ -1041,6 +1170,8 @@ PASSTHROUGH_TOOLS = {
     "civ5_great_people": ("great_people", None),
     "civ5_trade_routes": ("trade_routes", None),
     "civ5_world_congress": ("world_congress", None),
+    "civ5_espionage": ("espionage", None),
+    "civ5_religion": ("religion", None),
 }
 
 ACTION_TOOLS = {
@@ -1049,6 +1180,11 @@ ACTION_TOOLS = {
     "civ5_city_automation",
     "civ5_set_research",
     "civ5_unit_action",
+    "civ5_adopt_policy",
+    "civ5_found_pantheon",
+    "civ5_league_vote",
+    "civ5_establish_trade_route",
+    "civ5_move_spy",
 }
 
 NO_REPLY_TO_ACTION = (
@@ -1262,6 +1398,27 @@ def _action_args(name, arguments, origin):
         return [arguments["city"], arguments["state"]]
     if name == "civ5_set_research":
         return [arguments["goal"], arguments.get("mode") or "replace"]
+    if name == "civ5_adopt_policy":
+        return [arguments["name"]]
+    if name == "civ5_found_pantheon":
+        return [arguments["belief"]]
+    if name == "civ5_league_vote":
+        return [
+            int(arguments["proposal"]),
+            arguments.get("direction") or "enact",
+            int(arguments["delegates"]),
+            arguments["choice"],
+        ]
+    if name == "civ5_establish_trade_route":
+        fields = [int(arguments["unit"]), arguments["city"]]
+        if arguments.get("kind"):
+            fields.append(arguments["kind"])
+        return fields
+    if name == "civ5_move_spy":
+        fields = [str(arguments["spy"]), arguments["target"]]
+        if arguments.get("role"):
+            fields.append(arguments["role"])
+        return fields
     action = arguments["action"]
     fields = [int(arguments["unit"]), action]
     if action == "move":
@@ -1445,6 +1602,18 @@ def call_tool(name, arguments):
         return call_notes_tool(name, arguments)
     elif name == "civ5_briefing":
         return call_briefing()
+    elif name == "civ5_combat_odds":
+        info, err = _game_info()
+        if err is not None:
+            return err
+        origin = info.get("coordOrigin")
+        px, py = float(arguments["x"]), float(arguments["y"])
+        try:
+            x, y = geometry.engine_coords(origin, px, py) if origin is not None else (int(px), int(py))
+        except geometry.PlaceError as e:
+            return str(e), True
+        extra = ("melee",) if arguments.get("melee") else ()
+        envelope = game_query("combat_odds", int(arguments["unit"]), x, y, *extra)
     elif name == "civ5_explain":
         if arguments.get("kind"):
             envelope = game_query("explain", arguments["name"], arguments["kind"])

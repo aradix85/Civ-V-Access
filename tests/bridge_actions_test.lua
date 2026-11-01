@@ -140,6 +140,11 @@ local function withEnv(fn)
         "CityPurchaseBuilding",
         "CityPurchaseProject",
         "SelectionListGameNetMessage",
+        "GetAvailablePantheonBeliefs",
+        "GetNumActiveLeagues",
+        "GetActiveLeague",
+        "GetNumLeaguesEverFounded",
+        "GetLeague",
     }) do
         save(Game, k)
     end
@@ -157,6 +162,11 @@ local function withEnv(fn)
         "Civilizations",
         "Civilization_UnitClassOverrides",
         "Civilization_BuildingClassOverrides",
+        "Policies",
+        "PolicyBranchTypes",
+        "Beliefs",
+        "Resolutions",
+        "ResolutionDecisions",
     }) do
         save(GameInfo, k)
         GameInfo[k] = infoTable({})
@@ -207,7 +217,15 @@ local function withEnv(fn)
     Game.CityPurchaseBuilding = record("CityPurchaseBuilding")
     Game.CityPurchaseProject = record("CityPurchaseProject")
     Game.SelectionListGameNetMessage = record("SelectionListGameNetMessage")
-    Network = { SendResearch = record("SendResearch"), SendDoTask = record("SendDoTask") }
+    Network = {
+        SendResearch = record("SendResearch"),
+        SendDoTask = record("SendDoTask"),
+        SendUpdatePolicies = record("SendUpdatePolicies"),
+        SendFoundPantheon = record("SendFoundPantheon"),
+        SendLeagueVoteEnact = record("SendLeagueVoteEnact"),
+        SendLeagueVoteRepeal = record("SendLeagueVoteRepeal"),
+        SendMoveSpy = record("SendMoveSpy"),
+    }
     SpeechPipeline = {
         speakQueued = function(s)
             spoken[#spoken + 1] = s
@@ -258,6 +276,10 @@ local function withEnv(fn)
     dofile("src/dlc/UI/InGame/CivVAccess_BridgeCity.lua")
     dofile("src/dlc/UI/InGame/CivVAccess_BridgeTech.lua")
     dofile("src/dlc/UI/InGame/CivVAccess_BridgeUnit.lua")
+    dofile("src/dlc/UI/InGame/CivVAccess_BridgeEmpire.lua")
+    dofile("src/dlc/UI/InGame/CivVAccess_BridgeLeague.lua")
+    dofile("src/dlc/UI/InGame/CivVAccess_BridgeTrade.lua")
+    dofile("src/dlc/UI/InGame/CivVAccess_BridgeSpy.lua")
     Rpc.installListeners()
 
     local ok, err = pcall(fn)
@@ -270,6 +292,9 @@ end
 -- Runs one request line through the dispatcher and returns the decoded-ish
 -- reply text once one is sent, ticking frames until it is.
 local function request(line, maxFrames)
+    for i = #sent, 1, -1 do
+        sent[i] = nil
+    end
     pending = line
     for _ = 1, maxFrames or 200 do
         TickPump.tick()
@@ -801,6 +826,232 @@ function M.test_build_over_an_improvement_waits_for_the_players_yes()
         T.eq(committed, 0, "nothing built without the player's yes")
         request("id2\tunit_action\t" .. stamp() .. "\t7\tbuild\tfarm\tconfirm", 2)
         T.eq(committed, 1, "confirmed, it is built")
+    end)
+end
+
+-- empire, congress, trade, spies ---------------------------------------------
+
+function M.test_adopt_policy_sends_the_policy_screen_commit()
+    withEnv(function()
+        GameInfo.PolicyBranchTypes = infoTable({ { Type = "POLICY_BRANCH_TRADITION", Description = "Tradition" } })
+        GameInfo.Policies = infoTable({
+            { Type = "POLICY_ARISTOCRACY", Description = "Aristocracy", PolicyBranchType = "POLICY_BRANCH_TRADITION" },
+        })
+        local adoptable, has, opened = false, false, false
+        activePlayer({
+            GetID = 0,
+            HasPolicy = function()
+                return has
+            end,
+            CanAdoptPolicy = function()
+                return adoptable
+            end,
+            IsPolicyBranchUnlocked = function()
+                return opened
+            end,
+            CanUnlockPolicyBranch = true,
+        })
+        local reply = request("id1\tadopt_policy\t" .. stamp() .. "\tAristocracy")
+        T.truthy(reply:find("cannot be adopted now", 1, true), reply)
+        T.eq(#calls, 0, "nothing is sent after a failed check")
+
+        adoptable = true
+        Network.SendUpdatePolicies = function(id, isPolicy, flag)
+            calls[#calls + 1] = { "SendUpdatePolicies", id, isPolicy, flag }
+            has, opened = isPolicy and true or has, (not isPolicy) or opened
+        end
+        reply = request("id2\tadopt_policy\t" .. stamp() .. "\taristocracy")
+        T.eq(calls[1][2], 0)
+        T.eq(calls[1][3], true, "a policy, not a branch")
+        T.truthy(reply:find('"confirmed":true', 1, true), reply)
+
+        reply = request("id3\tadopt_policy\t" .. stamp() .. "\tTradition")
+        T.eq(calls[2][3], false, "a branch is opened with the branch flag")
+        T.truthy(reply:find('"opened":true', 1, true), reply)
+    end)
+end
+
+function M.test_found_pantheon_only_with_a_belief_on_offer()
+    withEnv(function()
+        GameInfo.Beliefs = infoTable({
+            { Type = "BELIEF_GOD_OF_THE_SEA", ShortDescription = "God of the Sea" },
+            { Type = "BELIEF_GOD_OF_WAR", ShortDescription = "God of War" },
+        })
+        activePlayer({ GetID = 0, HasCreatedPantheon = false, CanCreatePantheon = true })
+        Game.GetAvailablePantheonBeliefs = function()
+            return { 1 }
+        end
+        local reply = request("id1\tfound_pantheon\t" .. stamp() .. "\tGod of the Sea")
+        T.truthy(reply:find("not an available pantheon belief", 1, true), reply)
+        T.eq(#calls, 0)
+        request("id2\tfound_pantheon\t" .. stamp() .. "\tgod of war")
+        T.eq(calls[1][1], "SendFoundPantheon")
+        T.eq(calls[1][3], 1, "the belief the player named")
+    end)
+end
+
+local function installLeague(opts)
+    GameInfo.Resolutions = infoTable({
+        { Type = "RESOLUTION_EMBARGO", VoterDecision = "RESOLUTION_DECISION_YES_OR_NO" },
+        { Type = "RESOLUTION_HOST", VoterDecision = "RESOLUTION_DECISION_MAJOR_CIV_MEMBER" },
+    })
+    GameInfo.ResolutionDecisions = infoTable({
+        { Type = "RESOLUTION_DECISION_YES_OR_NO" },
+        { Type = "RESOLUTION_DECISION_MAJOR_CIV_MEMBER" },
+    })
+    local remaining = opts.remaining or 5
+    local league = fake({
+        IsInSession = true,
+        GetRemainingVotesForMember = function()
+            return remaining
+        end,
+        GetEnactProposals = { { ID = 3, Type = 0 }, { ID = 4, Type = 1 } },
+        GetRepealProposals = {},
+        GetEnactProposalsOnHold = { { ID = 8, Type = 0 } },
+        GetRepealProposalsOnHold = {},
+        GetResolutionName = function(t)
+            return t == 0 and "Embargo" or "Choose Host"
+        end,
+        GetChoicesForDecision = { 1, 2 },
+        GetTextForChoice = function(_d, c)
+            return c == 1 and "Egypt" or "Rome"
+        end,
+    })
+    Game.GetNumActiveLeagues = function()
+        return 1
+    end
+    Game.GetActiveLeague = function()
+        return league
+    end
+    Game.GetNumLeaguesEverFounded = function()
+        return 1
+    end
+    Game.GetLeague = function()
+        return league
+    end
+    activePlayer({ GetID = 0 })
+    return function(n)
+        remaining = n
+    end
+end
+
+function M.test_league_vote_checks_delegates_and_maps_the_choice()
+    withEnv(function()
+        local setRemaining = installLeague({ remaining = 5 })
+        local reply = request("id1\tleague_vote\t" .. stamp() .. "\t8\tenact\t1\tyes")
+        T.truthy(reply:find("on hold", 1, true), reply)
+        reply = request("id2\tleague_vote\t" .. stamp() .. "\t3\tenact\t6\tyes")
+        T.truthy(reply:find("5 delegates left", 1, true), reply)
+        T.eq(#calls, 0)
+        Network.SendLeagueVoteEnact = function(...)
+            calls[#calls + 1] = { "SendLeagueVoteEnact", ... }
+            setRemaining(2)
+        end
+        reply = request("id3\tleague_vote\t" .. stamp() .. "\t3\tenact\t3\tno")
+        local c = calls[1]
+        T.eq(c[2], 0, "league id")
+        T.eq(c[3], 3, "proposal id")
+        T.eq(c[5], 3, "delegates")
+        T.eq(c[6], 0, "no is choice 0")
+        T.truthy(reply:find('"delegatesLeft":2', 1, true), reply)
+        request("id4\tleague_vote\t" .. stamp() .. "\t4\tenact\t1\trome")
+        T.eq(calls[2][6], 2, "a civilization choice sends that choice's id")
+    end)
+end
+
+local function installTradeUnit(destinations)
+    local unit = fake({ GetID = 7, GetUnitType = 0, IsDead = false })
+    GameInfo.Units = infoTable({ { Type = "UNIT_CARAVAN", Description = "Caravan" } })
+    local routes = {}
+    activePlayer({
+        GetID = 0,
+        GetUnitByID = unit,
+        GetPotentialInternationalTradeRouteDestinations = destinations,
+        GetTradeRoutes = function()
+            return routes
+        end,
+    })
+    save(Map, "GetPlot")
+    Map.GetPlot = function(x)
+        return fake({
+            GetPlotCity = fake({ GetName = x == 1 and "Ur" or "Thebes" }),
+            GetPlotIndex = 100 + x,
+        })
+    end
+    save(_G, "TradeConnectionTypes")
+    TradeConnectionTypes = { TRADE_CONNECTION_INTERNATIONAL = 0, TRADE_CONNECTION_FOOD = 1, TRADE_CONNECTION_PRODUCTION = 2 }
+    UI.IsCityScreenUp = function()
+        return false
+    end
+    UI.GetInterfaceMode = function()
+        return InterfaceModeTypes.INTERFACEMODE_SELECTION
+    end
+    UI.SelectUnit = function() end
+    UI.GetHeadSelectedUnit = function()
+        return unit
+    end
+    save(UI, "ClearSelectionList")
+    UI.ClearSelectionList = function() end
+    save(_G, "MissionTypes")
+    MissionTypes = { MISSION_ESTABLISH_TRADE_ROUTE = 55 }
+    return routes
+end
+
+function M.test_trade_route_asks_which_kind_when_a_city_takes_two()
+    withEnv(function()
+        local routes = installTradeUnit({
+            { X = 1, Y = 0, TradeConnectionType = 1 },
+            { X = 1, Y = 0, TradeConnectionType = 2 },
+            { X = 2, Y = 0, TradeConnectionType = 0 },
+        })
+        local reply = request("id1\testablish_trade_route\t" .. stamp() .. "\t7\tUr")
+        T.truthy(reply:find("food or a production route", 1, true), reply)
+        reply = request("id2\testablish_trade_route\t" .. stamp() .. "\t7\tBabylon")
+        T.truthy(reply:find("possible: Ur (food), Ur (production), Thebes (international)", 1, true), reply)
+        T.eq(#calls, 0)
+        Game.SelectionListGameNetMessage = function(...)
+            calls[#calls + 1] = { "SelectionListGameNetMessage", ... }
+            routes[1] = {}
+        end
+        reply = request("id3\testablish_trade_route\t" .. stamp() .. "\t7\tur\tproduction")
+        local c = calls[1]
+        T.eq(c[3], 55)
+        T.eq(c[4], 101, "the destination plot")
+        T.eq(c[5], 2, "the production connection")
+        T.truthy(reply:find('"confirmed":true', 1, true), reply)
+    end)
+end
+
+function M.test_move_spy_sends_a_diplomat_only_to_a_peaceful_capital()
+    withEnv(function()
+        local capital = fake({ GetName = "Thebes", GetID = 4, IsCapital = true })
+        local town = fake({ GetName = "Memphis", GetID = 5, IsCapital = false })
+        Players[1] = fake({
+            IsMinorCiv = false,
+            GetTeam = 1,
+            GetCityByID = function(id)
+                return id == 4 and capital or town
+            end,
+        })
+        Teams[0] = fake({ IsAtWar = false })
+        activePlayer({
+            GetID = 0,
+            GetEspionageSpies = {
+                { AgentID = 2, Name = "Ashur", State = "TXT_KEY_SPY_STATE_IDLE", CityX = -1, CityY = -1 },
+            },
+            GetAvailableSpyRelocationCities = { { PlayerID = 1, CityID = 4 }, { PlayerID = 1, CityID = 5 } },
+        })
+        local reply = request("id1\tmove_spy\t" .. stamp() .. "\tAshur\tMemphis\tdiplomat")
+        T.truthy(reply:find("only go to the capital", 1, true), reply)
+        reply = request("id2\tmove_spy\t" .. stamp() .. "\tAshur\tKarnak")
+        T.truthy(reply:find("possible: Thebes, Memphis", 1, true), reply)
+        T.eq(#calls, 0)
+        request("id3\tmove_spy\t" .. stamp() .. "\t2\tthebes\tdiplomat", 50)
+        local c = calls[1]
+        T.eq(c[1], "SendMoveSpy")
+        T.eq(c[4], 1, "target player")
+        T.eq(c[5], 4, "target city")
+        T.eq(c[6], true, "as a diplomat")
     end)
 end
 

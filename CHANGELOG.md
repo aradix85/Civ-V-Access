@@ -29,6 +29,8 @@ New Features and improvements:
 - The MCP bridge can read great people progress, trade routes and the World Congress.
 - The MCP bridge says which advisors recommend each item a city can build.
 - Under Vox Populi, the MCP bridge reads each city's happiness and unhappiness with where they come from.
+- The MCP bridge can read your spies and your religion, and the combat odds for one of your units against a tile.
+- The MCP bridge can carry out more of your choices: social policies, a pantheon, World Congress votes, trade routes and spy moves.
 
 ## [2.4.0] - 2026-10-22
 

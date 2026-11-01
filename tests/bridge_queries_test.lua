@@ -126,6 +126,8 @@ local GAMEINFO_TABLES = {
     "Civilization_Leaders",
     "Leader_Traits",
     "Trait_NoTrain",
+    "Resolutions",
+    "ResolutionDecisions",
 }
 
 local function withEnv(fn)
@@ -146,11 +148,13 @@ local function withEnv(fn)
         "MapUtilities",
         "AdvisorTypes",
         "HandlerStack",
+        "UnitTargetMode",
     }) do
         save(_G, name)
     end
     for _, k in ipairs({
         "GetActivePlayer",
+        "GetActiveTeam",
         "GetGameTurn",
         "GetGameTurnYear",
         "GetResourceUsageType",
@@ -160,6 +164,9 @@ local function withEnv(fn)
         "IsNetworkMultiPlayer",
         "GetNumActiveLeagues",
         "GetActiveLeague",
+        "GetNumReligionsStillToFound",
+        "GetAvailablePantheonBeliefs",
+        "GetBeliefsInReligion",
         "IsUnitedNationsActive",
         "SetAdvisorRecommenderCity",
         "IsBuildingRecommended",
@@ -220,6 +227,9 @@ local function withEnv(fn)
     Game.GetActivePlayer = function()
         return 0
     end
+    Game.GetActiveTeam = function()
+        return 0
+    end
     Game.GetGameTurn = function()
         return 10
     end
@@ -262,6 +272,9 @@ local function withEnv(fn)
     dofile("src/dlc/UI/InGame/CivVAccess_QueryGreatPeople.lua")
     dofile("src/dlc/UI/InGame/CivVAccess_QueryTrade.lua")
     dofile("src/dlc/UI/InGame/CivVAccess_QueryLeague.lua")
+    dofile("src/dlc/UI/InGame/CivVAccess_QueryEspionage.lua")
+    dofile("src/dlc/UI/InGame/CivVAccess_QueryReligion.lua")
+    dofile("src/dlc/UI/InGame/CivVAccess_QueryCombat.lua")
 
     local ok, err = pcall(fn)
     restore()
@@ -1344,6 +1357,15 @@ function M.test_world_congress_reads_the_session_and_hides_the_unmet()
         T.eq(Rpc._queries.world_congress().active, false)
 
         installMeeting()
+        GameInfo.Resolutions = infoTable({
+            { Type = "RESOLUTION_ARTS", VoterDecision = "RESOLUTION_DECISION_YES_OR_NO" },
+            { Type = "RESOLUTION_EMBARGO", VoterDecision = "RESOLUTION_DECISION_YES_OR_NO" },
+            { Type = "RESOLUTION_HOST", VoterDecision = "RESOLUTION_DECISION_MAJOR_CIV_MEMBER" },
+        })
+        GameInfo.ResolutionDecisions = infoTable({
+            { Type = "RESOLUTION_DECISION_YES_OR_NO" },
+            { Type = "RESOLUTION_DECISION_MAJOR_CIV_MEMBER" },
+        })
         Players[0] = fake({ GetTeam = 0, IsAlive = true, IsMinorCiv = false })
         local votes = { [0] = 4, [1] = 6, [2] = 2 }
         local league = fake({
@@ -1358,16 +1380,20 @@ function M.test_world_congress_reads_the_session_and_hides_the_unmet()
                 return votes[i]
             end,
             GetRemainingVotesForMember = 3,
-            GetEnactProposals = { { Type = 5, ID = 9, ProposalPlayer = 2 } },
+            GetEnactProposals = { { Type = 1, ID = 9, ProposalPlayer = 2 }, { Type = 2, ID = 10, ProposalPlayer = -1 } },
             GetRepealProposals = {},
             GetEnactProposalsOnHold = {},
             GetRepealProposalsOnHold = {},
-            GetActiveResolutions = { { Type = 6, ID = 2 } },
+            GetActiveResolutions = { { Type = 0, ID = 2 } },
             GetResolutionName = function(t)
-                return t == 5 and "Embargo" or "Arts Funding"
+                return ({ [0] = "Arts Funding", [1] = "Embargo", [2] = "Choose Host" })[t]
             end,
             GetResolutionDetails = function(t)
-                return t == 5 and "[ICON_GOLD] No trade routes." or ""
+                return t == 1 and "[ICON_GOLD] No trade routes." or ""
+            end,
+            GetChoicesForDecision = { 0, 1 },
+            GetTextForChoice = function(_d, c)
+                return c == 1 and "Egypt" or "Babylon"
             end,
         })
         Game.GetNumActiveLeagues = function()
@@ -1390,8 +1416,119 @@ function M.test_world_congress_reads_the_session_and_hides_the_unmet()
         T.eq(data.members[3].civ, "unmet civilization")
         T.eq(data.proposals[1].name, "Embargo")
         T.eq(data.proposals[1].proposedBy, "unmet civilization")
+        T.eq(data.proposals[1].id, 9, "the id league_vote takes")
+        T.eq(data.proposals[1].choices, nil, "a yes/no proposal lists no choices")
+        T.eq(table.concat(data.proposals[2].choices, ","), "Babylon,Egypt")
+        T.eq(data.proposals[2].proposedBy, nil, "no proposer, no field")
         T.falsy(data.proposals[1].details:find("[ICON", 1, true), "markup filtered")
         T.eq(data.resolutionsInForce[1].details, nil, "empty details are left out")
+    end)
+end
+
+function M.test_espionage_places_spies_and_hides_unmet_owners()
+    withEnv(function()
+        installMeeting()
+        Players[0] = fake({
+            GetTeam = 0,
+            GetNumSpies = 2,
+            GetEspionageSpies = {
+                {
+                    AgentID = 0,
+                    Name = "Ashur",
+                    Rank = "Recruit",
+                    State = "Gathering intel",
+                    TurnsLeft = 4,
+                    CityX = 5,
+                    CityY = 5,
+                },
+                { AgentID = 1, Name = "Belit", State = "Unassigned", TurnsLeft = -1, CityX = -1, CityY = -1 },
+            },
+            GetEspionageCityStatus = {
+                { Name = "Thebes", PlayerID = 1, CityID = 3, Potential = 6 },
+                { Name = "Hidden City", PlayerID = 2, CityID = 1, Potential = 2 },
+            },
+        })
+        save(Map, "GetPlot")
+        Map.GetPlot = function()
+            return fake({ GetPlotCity = fake({ GetName = "Thebes", GetOwner = 1, GetID = 3 }) })
+        end
+        local data = Rpc._queries.espionage()
+        T.eq(data.spies[1].city, "Thebes")
+        T.eq(data.spies[1].civ, "Egypt")
+        T.eq(data.spies[1].turnsLeft, 4)
+        T.eq(data.spies[2].city, nil, "an unplaced spy has no city")
+        T.eq(data.spies[2].turnsLeft, nil, "no countdown, no field")
+        T.eq(data.cities[1].yourSpy, "Ashur")
+        T.eq(data.cities[2].civ, "unmet civilization")
+    end)
+end
+
+function M.test_religion_offers_pantheon_beliefs_until_one_is_founded()
+    withEnv(function()
+        GameInfo.Beliefs = infoTable({
+            { Type = "BELIEF_GOD_OF_WAR", ShortDescription = "God of War", Description = "[ICON_STRENGTH] Faith from kills." },
+            { Type = "BELIEF_TITHE", ShortDescription = "Tithe", Description = "Gold per followers." },
+        })
+        Game.GetNumReligionsStillToFound = function()
+            return 3
+        end
+        Game.GetAvailablePantheonBeliefs = function()
+            return { 0 }
+        end
+        local founded = false
+        Players[0] = fake({
+            GetFaith = 20,
+            GetTotalFaithPerTurn = 3,
+            HasCreatedPantheon = function()
+                return founded
+            end,
+            CanCreatePantheon = true,
+            GetBeliefInPantheon = 0,
+            Cities = iterate({}),
+        })
+        local data = Rpc._queries.religion()
+        T.eq(data.pantheonBeliefsAvailable[1].name, "God of War")
+        T.falsy(data.pantheonBeliefsAvailable[1].effect:find("[ICON", 1, true), "markup filtered")
+        T.eq(data.religion, nil, "no religion of your own")
+        founded = true
+        data = Rpc._queries.religion()
+        T.eq(data.pantheon.name, "God of War")
+        T.eq(data.pantheonBeliefsAvailable, nil, "nothing on offer once founded")
+    end)
+end
+
+function M.test_combat_odds_previews_ranged_first_and_never_through_fog()
+    withEnv(function()
+        GameInfo.Units = infoTable({ { Type = "UNIT_ARCHER", Description = "Archer" } })
+        local visible = true
+        save(Map, "GetPlot")
+        Map.GetPlot = function()
+            return fake({
+                IsVisible = function()
+                    return visible
+                end,
+            })
+        end
+        local asked
+        UnitTargetMode = {
+            previewAt = function(_unit, _plot, ranged)
+                asked = ranged
+                return "Archer, 7 vs 5, likely victory"
+            end,
+        }
+        Players[0] = fake({
+            GetUnitByID = fake({ IsDead = false, CanRangeStrike = true, GetUnitType = 0, GetX = 1, GetY = 1 }),
+        })
+        local data = Rpc._queries.combat_odds("7", "3", "1")
+        T.eq(data.attack, "ranged")
+        T.eq(asked, true)
+        T.eq(data.preview, "Archer, 7 vs 5, likely victory")
+        Rpc._queries.combat_odds("7", "3", "1", "melee")
+        T.eq(asked, false, "melee when asked")
+        visible, asked = false, nil
+        data = Rpc._queries.combat_odds("7", "3", "1")
+        T.eq(data.visible, false)
+        T.eq(asked, nil, "a fogged tile is not previewed")
     end)
 end
 

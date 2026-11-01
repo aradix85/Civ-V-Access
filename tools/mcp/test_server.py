@@ -197,6 +197,29 @@ def test_a_briefing_query_that_times_out_costs_only_its_section():
     _with_fake_game(replies, check)
 
 
+def test_league_vote_sends_proposal_direction_delegates_and_choice():
+    reply = {"id": "a", "ok": True, "data": {"confirmed": True}}
+
+    def check(calls):
+        server.call_tool("civ5_league_vote", {"proposal": 9, "delegates": 3, "choice": "yes"})
+        name, args = calls[-1]
+        assert name == "league_vote" and args[3:] == (9, "enact", 3, "yes"), args
+
+    _with_fake_game([reply], check)
+
+
+def test_combat_odds_converts_the_target_tile():
+    reply = {"id": "c", "ok": True, "data": {"preview": "odds"}}
+
+    def check(calls):
+        server.call_tool("civ5_combat_odds", {"unit": 7, "x": 2.5, "y": -1})
+        name, args = calls[-1]
+        assert name == "combat_odds", calls
+        assert args == (7, *server.geometry.engine_coords(ORIGIN, 2.5, -1)), args
+
+    _with_fake_game([reply], check)
+
+
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 

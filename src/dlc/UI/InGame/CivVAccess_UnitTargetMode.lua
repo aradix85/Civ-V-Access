@@ -518,6 +518,13 @@ local function combatPreviewAt(actor, plot, tx, ty, ranged)
     return UnitSpeech.meleePreview(actor, defenderUnit, plot)
 end
 
+-- The same preview for a caller outside target mode (the MCP bridge's
+-- combat_odds query): what this unit's melee or ranged attack on the plot
+-- would do, nil when the plot holds no visible enemy target.
+function UnitTargetMode.previewAt(actor, plot, ranged)
+    return combatPreviewAt(actor, plot, plot:GetX(), plot:GetY(), ranged)
+end
+
 -- Path-after-move suffix for the combat preview when a melee target is
 -- reachable but not adjacent. The path's last node is the enemy tile;
 -- the second-to-last is the tile the unit attacks from. Truncate the

@@ -56,7 +56,7 @@ read_globals = {
     "OrderTypes", "ReligionTypes", "CityUpdateTypes",
     "MinorCivPersonalityTypes",
     "CityAIFocusTypes", "MajorCivApproachTypes", "MinorCivTraitTypes",
-    "AdvisorTypes",
+    "AdvisorTypes", "TradeConnectionTypes",
 
     -- Platform / session / content
     "Modding", "Matchmaking", "Network", "Steam", "SaveFileList",
@@ -352,6 +352,7 @@ files["tests/"] = {
         "MinorCivTraitTypes", "GetActiveQuestToolTip",
         -- Engine enums the bridge-actions suite shims in its setup.
         "TaskTypes", "ActionSubTypes", "CityUpdateTypes",
+        "TradeConnectionTypes", "MissionTypes",
         -- Engine enum the empire-status suites stub to cover GameOption-
         -- gated branches (NO_SCIENCE / NO_HAPPINESS / NO_RELIGION /
         -- NO_POLICIES). Read-only at top level; suites need write access.

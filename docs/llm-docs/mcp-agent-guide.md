@@ -161,6 +161,12 @@ the options and their trade-offs and leave the decision to the player.
 - `civ5_world_congress` — session status, members and delegates, your
   votes or proposals left, proposals with what they would do, and the
   resolutions in force. Read only.
+- `civ5_combat_odds` — the game's combat preview for one of your units
+  attacking a tile (ranged, or melee). Read only.
+- `civ5_espionage` — your spies and the cities the game reports on, with
+  potential and which spy is where.
+- `civ5_religion` — faith, pantheon (or the beliefs on offer), your
+  religion and its beliefs, what your cities follow.
 - `civ5_game_settings` — how the game was set up, as the game menu's
   details tab lists it: era, map, difficulty, pace, the last turn when
   there is a turn limit, victory types, enabled game options with their
@@ -190,6 +196,17 @@ cost and get a yes unless the player already named exactly that purchase.
 - `civ5_unit_action` — move, fortify, sleep, sentry, skip, heal, wake,
   stop, explore, automate, found, upgrade, build, promote. Attacks are not
   offered; they stay with the player and the mod's target mode.
+- `civ5_adopt_policy` — adopt a policy, take an ideology tenet, or open a
+  policy branch. Permanent.
+- `civ5_found_pantheon` — found a pantheon with a belief on offer
+  (`civ5_religion` lists them). Permanent.
+- `civ5_league_vote` — cast delegates on a World Congress proposal (id
+  and direction from `civ5_world_congress`; yes/no or a listed choice).
+  Final.
+- `civ5_establish_trade_route` — send a caravan or cargo ship on a route
+  to a named city; `kind` when a city takes both food and production.
+- `civ5_move_spy` — move a spy to a city or the hideout; `diplomat` only
+  to a peaceful major capital.
 
 How they behave, so you can explain it:
 
@@ -204,6 +221,8 @@ How they behave, so you can explain it:
   name for city commands, so keep your own confirmation short.
 - No reply at all means the command may still land when the game picks it
   up. Check with a read tool before trying again; never repeat blindly.
+- `errorAfterSend` means the command went out and something after it
+  failed: do not repeat it; check with a read tool.
 - A unit command briefly selects that unit and then puts the player's own
   selection back, without moving their cursor; it is refused while a menu,
   the city screen or a targeting mode is open. A production or research

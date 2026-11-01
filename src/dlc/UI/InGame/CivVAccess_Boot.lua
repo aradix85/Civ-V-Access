@@ -232,6 +232,9 @@ include("CivVAccess_QueryDecisions")
 include("CivVAccess_QueryGreatPeople")
 include("CivVAccess_QueryTrade")
 include("CivVAccess_QueryLeague")
+include("CivVAccess_QueryEspionage")
+include("CivVAccess_QueryReligion")
+include("CivVAccess_QueryCombat")
 include("CivVAccess_QueryRules")
 -- Bridge actions: commands the player asks the assistant to carry out.
 -- BridgeCore defines the helpers the others use, so it loads first.
@@ -239,6 +242,10 @@ include("CivVAccess_BridgeCore")
 include("CivVAccess_BridgeCity")
 include("CivVAccess_BridgeTech")
 include("CivVAccess_BridgeUnit")
+include("CivVAccess_BridgeEmpire")
+include("CivVAccess_BridgeLeague")
+include("CivVAccess_BridgeTrade")
+include("CivVAccess_BridgeSpy")
 
 -- Track the WorldView Context include count across the session. The first
 -- include happens during pre-game setup (before LoadScreenClose); subsequent
