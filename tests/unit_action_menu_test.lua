@@ -190,9 +190,13 @@ function M.test_bridge_commit_sends_net_messages_with_alt_off()
         T.eq(sent[1][1], GameMessageTypes.GAMEMESSAGE_DO_COMMAND)
         T.eq(sent[1][2], 12)
         T.eq(sent[1][6], false, "Alt flag off")
+        local sentBeforeSpeech
         UnitActionMenu.commitWhere(unit, function(a)
             return a.Type == "BUILD_FARM"
+        end, function()
+            sentBeforeSpeech = #sent
         end)
+        T.eq(sentBeforeSpeech, 2, "onSent runs once the net message is out")
         T.eq(sent[2][1], GameMessageTypes.GAMEMESSAGE_PUSH_MISSION)
         T.eq(sent[2][2], 30)
         T.eq(sent[2][3], 4, "build id as mission data")

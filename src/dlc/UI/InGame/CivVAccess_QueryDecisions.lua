@@ -11,6 +11,22 @@
 
 local queries = Rpc._queries
 
+-- Whether any policy or branch is left to take; once every branch is done
+-- enough culture buys nothing.
+local function anyPolicyOpen(player)
+    for branch in GameInfo.PolicyBranchTypes() do
+        if player:CanUnlockPolicyBranch(branch.ID) then
+            return true
+        end
+    end
+    for policy in GameInfo.Policies() do
+        if player:CanAdoptPolicy(policy.ID) then
+            return true
+        end
+    end
+    return false
+end
+
 function queries.decisions()
     local player = Players[Game.GetActivePlayer()]
     local out = {}
@@ -24,7 +40,7 @@ function queries.decisions()
     count("freeTechs", player:GetNumFreeTechs())
     count("freeGreatPeople", player:GetNumFreeGreatPeople())
     count("mayaBonusGreatPeople", player:GetNumMayaBoosts())
-    if player:GetJONSCulture() >= player:GetNextPolicyCost() then
+    if player:GetJONSCulture() >= player:GetNextPolicyCost() and anyPolicyOpen(player) then
         out.policyAffordable = true
     end
     if not player:HasCreatedPantheon() and player:CanCreatePantheon(true) then

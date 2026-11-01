@@ -372,9 +372,8 @@ function actions.unit_action(idArg, action, arg1, arg2)
     end
     local committed, labels = Bridge.withUnitSelected(unit, function()
         for _, matches in ipairs(matchers) do
-            local row = UnitActionMenu.commitWhere(unit, matches)
+            local row = UnitActionMenu.commitWhere(unit, matches, Bridge.sent)
             if row ~= nil then
-                Bridge.sent()
                 return row
             end
         end

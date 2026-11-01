@@ -168,21 +168,18 @@ function actions.purchase(cityName, item, currency)
     end
     local yield = YieldTypes[yieldKey]
     local city = Bridge.ownCity(cityName)
+    -- No puppet check of its own: IsCanPurchase (canPurchase, canInvest)
+    -- is the engine's rule, which lets Venice buy in its puppets and, under
+    -- Vox Populi, more besides.
     local player = Bridge.activePlayer()
-    -- Venice (MayNotAnnex) buys in its own puppets, as the production
-    -- popup allows (g_bTheVeniceException).
-    if city:IsPuppet() and not player:MayNotAnnex() then
-        refusePuppet(city)
-    end
     local orderType, row, kind = Bridge.resolveProducible(item)
     local ownerID, cityID = city:GetOwner(), city:GetID()
 
     if yield == YieldTypes.YIELD_GOLD and BuildingInvest.canInvest(city, orderType, row.ID) then
         local cost = city:GetBuildingPurchaseCost(row.ID)
-        if not BuildingInvest.perform(city, row.ID) then
+        if not BuildingInvest.perform(city, row.ID, Bridge.sent) then
             error(city:GetName() .. " cannot invest in " .. itemName(row) .. " now")
         end
-        Bridge.sent()
         return { city = city:GetName(), item = itemName(row), invested = true, cost = cost, currency = currency }, function()
             local c = Players[ownerID]:GetCityByID(cityID)
             if not EngineData.buildingInvested(c, row.ID) then

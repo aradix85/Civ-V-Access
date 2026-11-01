@@ -6,8 +6,11 @@
 -- when the next session is, the members with their delegates, the
 -- player's own delegates and proposals left, the proposals on the table
 -- (each with the game's own description of what it would do), and the
--- resolutions in force. Members the player has not met stay unnamed.
--- Read only; voting and proposing stay with the screen.
+-- resolutions in force. Members and proposers the player has not met stay
+-- unnamed; a resolution's own name and details are the game's text, which
+-- the World Congress screen shows as is (it can name a civilization the
+-- player has not met, such as the target of sanctions). Read only; voting
+-- and proposing stay with the screen.
 
 local queries = Rpc._queries
 
@@ -24,7 +27,7 @@ end
 local function proposalEntry(league, me, raw, direction, onHold)
     local choice = raw.ProposerDecision or NO_CHOICE
     local entry = {
-        name = league:GetResolutionName(raw.Type, raw.ID, choice, false),
+        name = TextFilter.filter(league:GetResolutionName(raw.Type, raw.ID, choice, false)),
         direction = direction,
         onHold = onHold or nil,
         details = details(league, me, raw.Type, raw.ID, choice),
@@ -99,7 +102,7 @@ function queries.world_congress()
     for _, raw in ipairs(league:GetActiveResolutions()) do
         local choice = raw.ProposerDecision or NO_CHOICE
         inForce[#inForce + 1] = {
-            name = league:GetResolutionName(raw.Type, raw.ID, choice, false),
+            name = TextFilter.filter(league:GetResolutionName(raw.Type, raw.ID, choice, false)),
             details = details(league, me, raw.Type, raw.ID, choice),
         }
     end

@@ -966,10 +966,12 @@ TOOLS = [
         "name": "civ5_trade_routes",
         "description": (
             "Trade routes: the ones you run, the ones others run into your "
-            "cities, and the best routes your idle trade units could start "
-            "(top 10 by value to you, with the total count). Each names both "
-            "ends and what each end gets per turn, plus religious pressure. "
-            "Trade route slots used and available."
+            "cities, and the best routes that could be started from your "
+            "cities (top 10 by value to you, with the total count; whether a "
+            "trade unit is free is in civ5_units). Each names its kind "
+            "(international, food, production), both ends and what each end "
+            "gets per turn, plus religious pressure. Trade route slots used "
+            "and available."
         ),
         "inputSchema": {"type": "object", "properties": {}, "required": []},
     },

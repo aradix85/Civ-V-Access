@@ -1273,8 +1273,10 @@ end
 -- founded on an artifact, HandleAction opens a confirmation popup that
 -- carries no unit id, so its Yes would act on whatever unit is selected
 -- when the player answers. The bridge asks the player for that
--- confirmation itself before calling here.
-function UnitActionMenu.commitWhere(unit, matches)
+-- confirmation itself before calling here. onSent, when given, runs right
+-- after the net message goes out, before the confirmation speech, so the
+-- caller knows the command was given even if what follows fails.
+function UnitActionMenu.commitWhere(unit, matches, onSent)
     if unit == nil or GameInfoActions == nil then
         return nil
     end
@@ -1306,6 +1308,9 @@ function UnitActionMenu.commitWhere(unit, matches)
                     false,
                     false
                 )
+            end
+            if onSent ~= nil then
+                onSent()
             end
             local label = actionLabel(action)
             local confirm = selfPlotConfirmText(action, { iAction = iAction, buildName = label, promotionName = label })

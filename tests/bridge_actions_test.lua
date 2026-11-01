@@ -401,7 +401,6 @@ local function installCity(opts)
         GetCityByID = city,
         GetGold = opts.gold or 500,
         GetFaith = opts.faith or 200,
-        MayNotAnnex = opts.venice or false,
     })
     return city, queue
 end
@@ -468,20 +467,15 @@ function M.test_faith_purchase_uses_faith_and_confirms_on_spend()
     end)
 end
 
-function M.test_purchase_in_a_puppet_only_for_venice()
+function M.test_purchase_in_a_puppet_is_the_engines_call()
     withEnv(function()
         GameInfo.Units = infoTable({ { Type = "UNIT_MISSIONARY", Description = "Missionary" } })
         installCity({ puppet = true, canPurchase = true })
-        local reply = request("id1\tpurchase\t" .. stamp() .. "\tBabylon\tmissionary\tfaith")
-        T.truthy(reply:find("is a puppet", 1, true), "a puppet chooses its own production, purchases included")
-        T.eq(#calls, 0)
-
-        installCity({ puppet = true, canPurchase = true, venice = true })
         Game.CityPurchaseUnit = function(_c, id, yield)
             calls[#calls + 1] = { "CityPurchaseUnit", id, yield }
         end
-        request("id2\tpurchase\t" .. stamp() .. "\tBabylon\tmissionary\tfaith")
-        T.eq(#calls, 1, "Venice buys in its own puppets")
+        request("id1\tpurchase\t" .. stamp() .. "\tBabylon\tmissionary\tfaith")
+        T.eq(#calls, 1, "a puppet purchase the engine allows (Venice, Vox Populi) goes through")
     end)
 end
 

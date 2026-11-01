@@ -164,7 +164,19 @@ end
 
 -- Which of the game's advisors recommend an item, as the production
 -- chooser marks it (ChooseProductionLogic.advisorSuffix); nil when none.
--- Needs Game.SetAdvisorRecommenderCity(city) first.
+-- Needs Game.SetAdvisorRecommenderCity(city) first. That city is one
+-- shared engine setting the open production chooser reads its labels
+-- from, and there is no getter to put it back, so while the chooser is
+-- open the recommendations are left out.
+local function productionChooserOpen()
+    for i = 1, HandlerStack.count() do
+        if HandlerStack.at(i).name == "ChooseProductionPopup" then
+            return true
+        end
+    end
+    return false
+end
+
 local ADVISORS = { "ECONOMIC", "MILITARY", "SCIENCE", "FOREIGN" }
 local function recommendedBy(isRecommended, id)
     local out = {}
@@ -194,14 +206,23 @@ end
 -- the production chooser shows. Processes (wealth, research) have none.
 local function producible(city)
     local buildings, units, projects, processes = {}, {}, {}, {}
-    Game.SetAdvisorRecommenderCity(city)
+    local advise = not productionChooserOpen()
+    if advise then
+        Game.SetAdvisorRecommenderCity(city)
+    end
+    local function advisors(isRecommended, id)
+        if advise then
+            return recommendedBy(isRecommended, id)
+        end
+        return nil
+    end
     for row in GameInfo.Buildings() do
         if city:CanConstruct(row.ID) then
             buildings[#buildings + 1] = {
                 name = Text.key(row.Description),
                 kind = buildingKind(row),
                 turns = city:GetBuildingProductionTurnsLeft(row.ID),
-                advisors = recommendedBy(Game.IsBuildingRecommended, row.ID),
+                advisors = advisors(Game.IsBuildingRecommended, row.ID),
             }
         end
     end
@@ -210,7 +231,7 @@ local function producible(city)
             units[#units + 1] = {
                 name = Text.key(row.Description),
                 turns = city:GetUnitProductionTurnsLeft(row.ID),
-                advisors = recommendedBy(Game.IsUnitRecommended, row.ID),
+                advisors = advisors(Game.IsUnitRecommended, row.ID),
             }
         end
     end
@@ -219,7 +240,7 @@ local function producible(city)
             projects[#projects + 1] = {
                 name = Text.key(row.Description),
                 turns = city:GetProjectProductionTurnsLeft(row.ID),
-                advisors = recommendedBy(Game.IsProjectRecommended, row.ID),
+                advisors = advisors(Game.IsProjectRecommended, row.ID),
             }
         end
     end
@@ -228,7 +249,11 @@ local function producible(city)
             processes[#processes + 1] = Text.key(row.Description)
         end
     end
-    return { buildings = buildings, units = units, projects = projects, processes = processes }
+    local out = { buildings = buildings, units = units, projects = projects, processes = processes }
+    if not advise then
+        out.advisorsUnavailable = "the production chooser is open; ask again after it closes"
+    end
+    return out
 end
 
 local function specialists(city)

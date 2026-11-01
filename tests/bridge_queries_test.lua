@@ -145,6 +145,7 @@ local function withEnv(fn)
         "PreGame",
         "MapUtilities",
         "AdvisorTypes",
+        "HandlerStack",
     }) do
         save(_G, name)
     end
@@ -168,6 +169,16 @@ local function withEnv(fn)
         save(Game, k)
     end
     AdvisorTypes = { ADVISOR_ECONOMIC = 0, ADVISOR_MILITARY = 1, ADVISOR_SCIENCE = 2, ADVISOR_FOREIGN = 3 }
+    local handlers = {}
+    HandlerStack = {
+        count = function()
+            return #handlers
+        end,
+        at = function(i)
+            return handlers[i]
+        end,
+        _handlers = handlers,
+    }
     Game.SetAdvisorRecommenderCity = function() end
     local function never()
         return false
@@ -442,6 +453,12 @@ function M.test_city_details_lists_only_what_the_city_can_produce()
         T.eq(data.canProduce.buildings[1].advisors, nil, "no advisor, no field")
         T.eq(table.concat(data.canProduce.buildings[2].advisors, ","), "science", "after pointing the advisors at the city")
         T.eq(data.happinessSources, nil, "the Vox Populi breakdown only under its happiness model")
+        recommenderCity = nil
+        HandlerStack._handlers[1] = { name = "ChooseProductionPopup" }
+        local open = Rpc._queries.city_details("rome")
+        T.eq(recommenderCity, nil, "the open chooser's advisor city is left alone")
+        T.eq(open.canProduce.buildings[2].advisors, nil)
+        T.truthy(open.canProduce.advisorsUnavailable ~= nil)
         T.eq(#data.buildings, 1)
         T.eq(data.buildings[1].name, "Monument")
         T.eq(data.borderGrowth.turns, 10)
@@ -1174,13 +1191,22 @@ function M.test_decisions_list_only_what_waits_on_the_player()
         EngineData.unitPromotionReady = function(u)
             return u:Ready()
         end
+        GameInfo.PolicyBranchTypes = infoTable({ { Type = "POLICY_BRANCH_TRADITION" } })
+        GameInfo.Policies = infoTable({ { Type = "POLICY_ARISTOCRACY" } })
+        local culture, open = 40, false
         Players[0] = fake({
+            CanUnlockPolicyBranch = false,
+            CanAdoptPolicy = function()
+                return open
+            end,
             GetNumFreePolicies = 1,
             GetNumFreeTenets = 0,
             GetNumFreeTechs = 0,
             GetNumFreeGreatPeople = 0,
             GetNumMayaBoosts = 0,
-            GetJONSCulture = 40,
+            GetJONSCulture = function()
+                return culture
+            end,
             GetNextPolicyCost = 50,
             HasCreatedPantheon = false,
             CanCreatePantheon = function(checkFaith)
@@ -1203,6 +1229,10 @@ function M.test_decisions_list_only_what_waits_on_the_player()
         T.eq(table.concat(data.citiesWithoutProduction, ","), "Babylon", "a puppet picks its own production")
         T.eq(#data.promotionsReady, 1)
         T.eq(data.promotionsReady[1].id, 7)
+        culture = 60
+        T.eq(Rpc._queries.decisions().policyAffordable, nil, "culture buys nothing once every policy is taken")
+        open = true
+        T.eq(Rpc._queries.decisions().policyAffordable, true)
     end)
 end
 

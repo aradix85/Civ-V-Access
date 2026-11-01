@@ -3,9 +3,10 @@
 -- re-registers on every load-from-game.
 --
 -- The three lists of the Trade Route Overview: routes the player runs,
--- routes others run into the player's cities, and the routes the player's
--- idle trade units could start (the best few by yield, since a large map
--- offers hundreds). Each route names both ends and what each end gets per
+-- routes others run into the player's cities, and the routes that could
+-- be started from the player's cities (the best few by yield, since a
+-- large map offers hundreds; whether a trade unit is free to run one is
+-- in the units query). Each route names both ends and what each end gets per
 -- turn, in the engine's own GetTradeRoutes* records; Vox Populi adds
 -- culture to the same records, vanilla leaves it out.
 
@@ -47,8 +48,24 @@ local function pressure(religion, amount)
     return { religion = Text.key(Game.GetReligionName(religion)), amount = amount }
 end
 
+-- International, or an internal route carrying food or production (the
+-- same two cities can appear once for each).
+local function routeKind(r)
+    if r.ToID ~= Game.GetActivePlayer() then
+        return "international"
+    end
+    if (r.ToFood or 0) > 0 then
+        return "food"
+    end
+    if (r.ToProduction or 0) > 0 then
+        return "production"
+    end
+    return "internal"
+end
+
 local function routeEntry(r)
     return {
+        kind = routeKind(r),
         from = endpoint(r.FromID, r.FromCityName),
         to = endpoint(r.ToID, r.ToCityName),
         domain = r.Domain == DomainTypes.DOMAIN_SEA and "sea" or "land",

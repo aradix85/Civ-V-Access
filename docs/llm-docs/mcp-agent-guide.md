@@ -155,8 +155,9 @@ the options and their trade-offs and leave the decision to the player.
   (banked, next cost; per turn and turns to go under Vox Populi), great
   general and admiral progress, faith for the next great prophet.
 - `civ5_trade_routes` — routes you run, routes into your cities, and the
-  ten best your idle trade units could start, each with both ends and
-  what each end gets per turn.
+  ten best that could be started from your cities (a free trade unit is
+  in `civ5_units`), each with its kind, both ends and what each end gets
+  per turn.
 - `civ5_world_congress` — session status, members and delegates, your
   votes or proposals left, proposals with what they would do, and the
   resolutions in force. Read only.

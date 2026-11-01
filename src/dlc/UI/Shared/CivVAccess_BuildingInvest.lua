@@ -52,8 +52,9 @@ end
 -- reduction; the poll re-resolves the city by id each tick because the
 -- original handle can go stale across the network dispatch. Returns true
 -- when the purchase dispatched, false (logged) when the engine refused at
--- commit -- the caller announces the refusal.
-function BuildingInvest.perform(city, buildingID)
+-- commit -- the caller announces the refusal. onSent, when given, runs
+-- right after the purchase goes out, before the speech.
+function BuildingInvest.perform(city, buildingID, onSent)
     if not city:IsCanPurchase(true, true, -1, buildingID, -1, YieldTypes.YIELD_GOLD) then
         Log.error("BuildingInvest: IsCanPurchase false at commit; building=" .. tostring(buildingID))
         return false
@@ -63,6 +64,9 @@ function BuildingInvest.perform(city, buildingID)
     local ownerID, cityID = city:GetOwner(), city:GetID()
 
     Game.CityPurchaseBuilding(city, buildingID, YieldTypes.YIELD_GOLD)
+    if onSent ~= nil then
+        onSent()
+    end
     Events.SpecificCityInfoDirty(ownerID, cityID, CityUpdateTypes.CITY_UPDATE_TYPE_BANNER)
     Events.SpecificCityInfoDirty(ownerID, cityID, CityUpdateTypes.CITY_UPDATE_TYPE_PRODUCTION)
     Events.AudioPlay2DSound("AS2D_INTERFACE_CITY_SCREEN_PURCHASE")
