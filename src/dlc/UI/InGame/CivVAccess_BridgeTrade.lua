@@ -43,7 +43,9 @@ function actions.establish_trade_route(unitArg, cityName, kind)
         local city = Map.GetPlot(v.X, v.Y):GetPlotCity()
         local vKind = connectionKind(v.TradeConnectionType)
         names[#names + 1] = city:GetName() .. (vKind and (" (" .. vKind .. ")") or "")
-        if Locale.ToLower(city:GetName()) == wanted and (kind == nil or kind == "" or vKind == nil or vKind == kind) then
+        if
+            Locale.ToLower(city:GetName()) == wanted and (kind == nil or kind == "" or vKind == nil or vKind == kind)
+        then
             matches[#matches + 1] = { dest = v, city = city, kind = vKind }
         end
     end

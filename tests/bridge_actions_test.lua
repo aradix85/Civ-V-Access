@@ -979,7 +979,8 @@ local function installTradeUnit(destinations)
         })
     end
     save(_G, "TradeConnectionTypes")
-    TradeConnectionTypes = { TRADE_CONNECTION_INTERNATIONAL = 0, TRADE_CONNECTION_FOOD = 1, TRADE_CONNECTION_PRODUCTION = 2 }
+    TradeConnectionTypes =
+        { TRADE_CONNECTION_INTERNATIONAL = 0, TRADE_CONNECTION_FOOD = 1, TRADE_CONNECTION_PRODUCTION = 2 }
     UI.IsCityScreenUp = function()
         return false
     end

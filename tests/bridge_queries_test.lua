@@ -1466,7 +1466,11 @@ end
 function M.test_religion_offers_pantheon_beliefs_until_one_is_founded()
     withEnv(function()
         GameInfo.Beliefs = infoTable({
-            { Type = "BELIEF_GOD_OF_WAR", ShortDescription = "God of War", Description = "[ICON_STRENGTH] Faith from kills." },
+            {
+                Type = "BELIEF_GOD_OF_WAR",
+                ShortDescription = "God of War",
+                Description = "[ICON_STRENGTH] Faith from kills.",
+            },
             { Type = "BELIEF_TITHE", ShortDescription = "Tithe", Description = "Gold per followers." },
         })
         Game.GetNumReligionsStillToFound = function()
