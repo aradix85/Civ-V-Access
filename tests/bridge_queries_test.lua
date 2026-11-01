@@ -451,7 +451,11 @@ function M.test_city_details_lists_only_what_the_city_can_produce()
         end
         T.eq(table.concat(names, ","), "Granary:building,Pyramids:worldWonder")
         T.eq(data.canProduce.buildings[1].advisors, nil, "no advisor, no field")
-        T.eq(table.concat(data.canProduce.buildings[2].advisors, ","), "science", "after pointing the advisors at the city")
+        T.eq(
+            table.concat(data.canProduce.buildings[2].advisors, ","),
+            "science",
+            "after pointing the advisors at the city"
+        )
         T.eq(data.happinessSources, nil, "the Vox Populi breakdown only under its happiness model")
         recommenderCity = nil
         HandlerStack._handlers[1] = { name = "ChooseProductionPopup" }
