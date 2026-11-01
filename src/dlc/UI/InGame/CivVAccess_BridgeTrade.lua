@@ -7,7 +7,9 @@
 -- popup offers), and the order is the popup's own commit
 -- (ChooseInternationalTradeRoutePopup.lua OnConfirmYes): a PUSH_MISSION of
 -- MISSION_ESTABLISH_TRADE_ROUTE with the destination plot and the
--- connection type, sent with the unit selected.
+-- connection type, sent with the unit selected. The kind of route is
+-- international, food, production, or under Vox Populi wonder (a wonder's
+-- resource carried to the city building it).
 
 local actions = Rpc._actions
 
@@ -28,13 +30,15 @@ local function connectionKind(connectionType)
         return "international"
     end
     -- Vox Populi: carrying a wonder's resource to the city building it.
-    if connectionType == TradeConnectionTypes.TRADE_CONNECTION_WONDER_RESOURCE then
+    -- The field is nil on vanilla; compare only where it exists.
+    local wonder = TradeConnectionTypes.TRADE_CONNECTION_WONDER_RESOURCE
+    if wonder ~= nil and connectionType == wonder then
         return "wonder"
     end
     return "other"
 end
 
--- establish_trade_route <unit id> <city> [international|food|production]
+-- establish_trade_route <unit id> <city> [international|food|production|wonder]
 function actions.establish_trade_route(unitArg, cityName, kind)
     if cityName == nil or cityName == "" then
         error("name the destination city")
@@ -64,6 +68,11 @@ function actions.establish_trade_route(unitArg, cityName, kind)
         local kinds = {}
         for _, mm in ipairs(matches) do
             kinds[#kinds + 1] = mm.kind
+        end
+        if #kinds == 0 then
+            -- No TradeConnectionTypes in this engine: the routes cannot be
+            -- told apart here.
+            error(cityName .. " takes more than one kind of route; choose it on the trade route screen")
         end
         error(cityName .. " takes more than one kind of route (" .. table.concat(kinds, ", ") .. "); say which")
     end

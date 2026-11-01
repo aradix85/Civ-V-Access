@@ -21,6 +21,9 @@ local function tenetSlotsFull(player, policy, branch)
         return false
     end
     local slots = GameDefines["MAX_NUM_TENETS_LEVEL_" .. level] or TENET_SLOTS[level]
+    if slots == nil then
+        return false
+    end
     local owned = 0
     for p in GameInfo.Policies({ PolicyBranchType = branch.Type, Level = level }) do
         if player:HasPolicy(p.ID) then
@@ -30,16 +33,23 @@ local function tenetSlotsFull(player, policy, branch)
     return owned >= slots
 end
 
+-- A blocked branch or policy (one ruled out by a branch the player has)
+-- takes the policy screen's switch-branch question, which the screen only
+-- offers when the player has it or could take it; that switch stays with
+-- the screen.
+local BLOCKED = " is blocked by a branch you have; switching branches is done on the policy screen"
+
 local function openBranch(player, branch)
     local label = Text.key(branch.Description)
-    if player:IsPolicyBranchUnlocked(branch.ID) then
+    local unlocked = player:IsPolicyBranchUnlocked(branch.ID)
+    local canUnlock = player:CanUnlockPolicyBranch(branch.ID)
+    if player:IsPolicyBranchBlocked(branch.ID) and (unlocked or canUnlock) then
+        error(label .. BLOCKED)
+    end
+    if unlocked then
         error(label .. " is already open")
     end
-    -- A blocked branch takes the screen's switch-branch question instead.
-    if player:IsPolicyBranchBlocked(branch.ID) then
-        error(label .. " is blocked by a branch you have; switch on the policy screen")
-    end
-    if not player:CanUnlockPolicyBranch(branch.ID) then
+    if not canUnlock then
         error(label .. " cannot be opened now")
     end
     Network.SendUpdatePolicies(branch.ID, false, true)
@@ -57,18 +67,20 @@ end
 
 local function adoptPolicy(player, policy)
     local label = Text.key(policy.Description)
-    if player:HasPolicy(policy.ID) then
-        error("you already have " .. label)
+    local has = player:HasPolicy(policy.ID)
+    local canAdopt = player:CanAdoptPolicy(policy.ID)
+    if player:IsPolicyBlocked(policy.ID) and (has or canAdopt) then
+        error(label .. BLOCKED)
     end
-    if player:IsPolicyBlocked(policy.ID) then
-        error(label .. " is blocked by a branch you have; switch on the policy screen")
+    if has then
+        error("you already have " .. label)
     end
     local branch = GameInfo.PolicyBranchTypes[policy.PolicyBranchType]
     local isTenet = branch.PurchaseByLevel == true or branch.PurchaseByLevel == 1
     if isTenet and tenetSlotsFull(player, policy, branch) then
         error("every level " .. policy.Level .. " tenet slot is taken")
     end
-    if not player:CanAdoptPolicy(policy.ID) then
+    if not canAdopt then
         error(label .. " cannot be adopted now")
     end
     Network.SendUpdatePolicies(policy.ID, true, true)

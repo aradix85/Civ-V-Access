@@ -755,6 +755,27 @@ function M.test_fortify_falls_back_to_sleep_and_lists_options_on_failure()
     end)
 end
 
+function M.test_unit_error_after_the_order_went_out_is_reported_as_sent()
+    withEnv(function()
+        installUnit({})
+        UnitActionMenu = {
+            commitWhere = function(_u, _matches, onSent)
+                onSent()
+                error("confirmation speech broke")
+            end,
+            actionLabel = function(row)
+                return row.Type
+            end,
+            availableActions = function()
+                return {}
+            end,
+        }
+        local reply = request("id1\tunit_action\t" .. stamp() .. "\t7\tsleep")
+        T.truthy(reply:find('"ok":true', 1, true), "the order went out; no retry")
+        T.truthy(reply:find('"errorAfterSend":"confirmation speech broke"', 1, true), reply)
+    end)
+end
+
 function M.test_unit_command_puts_the_players_selection_back()
     withEnv(function()
         local unit = installUnit({})
@@ -853,10 +874,13 @@ function M.test_adopt_policy_sends_the_policy_screen_commit()
         })
         local adoptable, has, opened = false, false, false
         local ownedTenets = { [3] = true, [4] = true, [5] = true }
+        local blockedBranch = false
         activePlayer({
             GetID = 0,
             IsPolicyBlocked = false,
-            IsPolicyBranchBlocked = false,
+            IsPolicyBranchBlocked = function()
+                return blockedBranch
+            end,
             HasPolicy = function(id)
                 return ownedTenets[id] or (id == 0 and has)
             end,
@@ -886,6 +910,11 @@ function M.test_adopt_policy_sends_the_policy_screen_commit()
         T.eq(calls[2][2], 0, "the branch, not its same-named free starting policy")
         T.eq(calls[2][3], false, "a branch is opened with the branch flag")
         T.truthy(reply:find('"opened":true', 1, true), reply)
+
+        blockedBranch = true
+        reply = request("id5\tadopt_policy\t" .. stamp() .. "\tTradition")
+        T.truthy(reply:find("switching branches is done on the policy screen", 1, true), reply)
+        blockedBranch = false
 
         reply = request("id4\tadopt_policy\t" .. stamp() .. "\tSpace Procurements")
         T.truthy(reply:find("level 3 tenet slot is taken", 1, true), reply)
