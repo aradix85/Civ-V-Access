@@ -18,6 +18,8 @@ import civ5_geometry as geometry
 
 HOSTILE_NEAR_CITY = 3  # tiles
 BANKRUPTCY_WARN_TURNS = 15
+# At standard speed; scaled by the game speed's growth percent, so a
+# Marathon city is not "slow" at a pace that is normal there.
 SLOW_GROWTH_TURNS = 15
 
 UNMET = "unmet civilization"
@@ -31,14 +33,17 @@ def _plural(n, word):
     return f"{n} {word}{'s' if n != 1 else ''}"
 
 
-def _city_warnings(cities, add):
+def _city_warnings(cities, add, growth_percent):
+    slow = SLOW_GROWTH_TURNS * growth_percent / 100
     for c in cities:
         food = c.get("food") or {}
         if food.get("starving"):
             add(URGENT, f"{c['name']} is starving.")
+        elif food.get("intoProduction"):
+            pass
         elif food.get("perTurn") == 0:
             add(IMPORTANT, f"{c['name']} is not growing (no food surplus).")
-        elif (food.get("turnsToGrow") or 0) > SLOW_GROWTH_TURNS:
+        elif (food.get("turnsToGrow") or 0) > slow:
             add(INFO, f"{c['name']} grows slowly ({food['turnsToGrow']} turns).")
         if c.get("maxHealth") and c.get("health") is not None and c["health"] < c["maxHealth"]:
             add(IMPORTANT, f"{c['name']} is damaged ({c['health']} of {c['maxHealth']}).")
@@ -118,16 +123,17 @@ def hex_map_from(origin):
     return geometry.HexMap(origin["mapWidth"], origin["mapHeight"], origin.get("wrapX", False))
 
 
-def warnings(empire, cities, hostiles, units, victory, origin):
+def warnings(empire, cities, hostiles, units, victory, origin, growth_percent=100):
     """What needs attention now, most urgent first. Coordinates in the
     inputs are raw engine coordinates (distances are measured before the
-    payload is converted for the player)."""
+    payload is converted for the player). growth_percent is the game
+    speed's (game_info), 100 at standard speed."""
     out = []
 
     def add(level, text):
         out.append({"level": level, "text": text})
 
-    _city_warnings(cities, add)
+    _city_warnings(cities, add, growth_percent or 100)
     _economy_warnings(empire, add)
     _threat_warnings(hostiles, hex_map_from(origin), add)
     _unit_warnings(units, add)

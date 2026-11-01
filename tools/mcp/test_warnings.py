@@ -53,6 +53,15 @@ def test_results_are_ordered_most_urgent_first():
     assert "Hungry" in found[0]["text"]
 
 
+def test_slow_growth_follows_the_game_speed_and_skips_food_into_production():
+    cities = [
+        {"name": "Slow", "food": {"perTurn": 1, "turnsToGrow": 30}},
+        {"name": "Settling", "food": {"perTurn": 0, "intoProduction": True}},
+    ]
+    assert _texts(w.warnings({}, cities, {}, [], {}, None)) == ["Slow grows slowly (30 turns)."]
+    assert w.warnings({}, cities, {}, [], {}, None, growth_percent=300) == [], "30 turns is normal on Marathon"
+
+
 def test_unmet_capitals_are_not_lumped_into_one_rival():
     victory = {
         "domination": {

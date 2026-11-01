@@ -401,6 +401,7 @@ local function installCity(opts)
         GetCityByID = city,
         GetGold = opts.gold or 500,
         GetFaith = opts.faith or 200,
+        MayNotAnnex = opts.venice or false,
     })
     return city, queue
 end
@@ -464,6 +465,41 @@ function M.test_faith_purchase_uses_faith_and_confirms_on_spend()
         T.eq(calls[1][1], "CityPurchaseUnit")
         T.eq(calls[1][3], YieldTypes.YIELD_FAITH)
         T.truthy(reply:find('"faithLeft":120', 1, true), reply)
+    end)
+end
+
+function M.test_purchase_in_a_puppet_only_for_venice()
+    withEnv(function()
+        GameInfo.Units = infoTable({ { Type = "UNIT_MISSIONARY", Description = "Missionary" } })
+        installCity({ puppet = true, canPurchase = true })
+        local reply = request("id1\tpurchase\t" .. stamp() .. "\tBabylon\tmissionary\tfaith")
+        T.truthy(reply:find("is a puppet", 1, true), "a puppet chooses its own production, purchases included")
+        T.eq(#calls, 0)
+
+        installCity({ puppet = true, canPurchase = true, venice = true })
+        Game.CityPurchaseUnit = function(_c, id, yield)
+            calls[#calls + 1] = { "CityPurchaseUnit", id, yield }
+        end
+        request("id2\tpurchase\t" .. stamp() .. "\tBabylon\tmissionary\tfaith")
+        T.eq(#calls, 1, "Venice buys in its own puppets")
+    end)
+end
+
+function M.test_an_error_after_the_command_went_out_is_not_a_failure()
+    withEnv(function()
+        GameInfo.Buildings = infoTable({ { Type = "BUILDING_GRANARY", Description = "Granary" } })
+        installCity({})
+        Game.CityPushOrder = function()
+            calls[#calls + 1] = { "CityPushOrder" }
+        end
+        Events.SpecificCityInfoDirty = function()
+            error("banner refresh broke")
+        end
+        local reply = request("id1\tset_production\t" .. stamp() .. "\tBabylon\tGranary")
+        T.eq(#calls, 1)
+        T.truthy(reply:find('"ok":true', 1, true), "the command went out; the reply must not invite a retry")
+        T.truthy(reply:find('"errorAfterSend":"banner refresh broke"', 1, true), reply)
+        T.truthy(reply:find('"confirmed":false', 1, true), reply)
     end)
 end
 

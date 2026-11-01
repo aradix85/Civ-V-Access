@@ -281,8 +281,11 @@ end
 
 -- evaluate_settle -------------------------------------------------------------
 
-local function installSettlePlot()
+local function installSettlePlot(revealed)
     local plot = {
+        IsRevealed = function()
+            return revealed ~= false
+        end,
         IsFreshWater = function()
             return true
         end,
@@ -298,7 +301,17 @@ local function installSettlePlot()
             return plot
         end,
     }
-    return plot
+    -- The reveal check asks for the active team; earlier suites may have
+    -- swapped Game for a table without it.
+    local outer = Game
+    Game = setmetatable({
+        GetActiveTeam = function()
+            return 0
+        end,
+    }, { __index = outer })
+    return function()
+        Game = outer
+    end
 end
 
 local function installSettlePlayer(units)
@@ -331,7 +344,7 @@ end
 function M.test_evaluate_settle_reads_live_facts_and_settler_turns()
     setup()
     local origMap, origEngineData = Map, EngineData
-    installSettlePlot()
+    local restoreGame = installSettlePlot()
     local settlerPlot = {}
     local settler = {
         IsFound = function()
@@ -367,13 +380,14 @@ function M.test_evaluate_settle_reads_live_facts_and_settler_turns()
     T.truthy(sent[1]:find('"reachable":true', 1, true), sent[1])
     T.truthy(sent[1]:find('"turns":4', 1, true), sent[1])
     Map, EngineData = origMap, origEngineData
+    restoreGame()
     Players[0] = nil
 end
 
 function M.test_evaluate_settle_omits_settlers_without_fork()
     setup()
     local origMap, origEngineData = Map, EngineData
-    installSettlePlot()
+    local restoreGame = installSettlePlot()
     installSettlePlayer({})
     EngineData = {
         forkPresent = function()
@@ -386,6 +400,23 @@ function M.test_evaluate_settle_omits_settlers_without_fork()
     T.truthy(sent[1]:find('"ok":true', 1, true), sent[1])
     T.eq(sent[1]:find('"yourSettlers"', 1, true), nil, "no fork: settler travel must be absent, not zero-filled")
     Map, EngineData = origMap, origEngineData
+    restoreGame()
+    Players[0] = nil
+end
+
+function M.test_evaluate_settle_answers_nothing_about_an_unrevealed_tile()
+    setup()
+    local origMap = Map
+    local restoreGame = installSettlePlot(false)
+    installSettlePlayer({})
+    pending = "req16\tevaluate_settle\t5\t6"
+    Rpc._poll()
+    T.eq(#sent, 1)
+    T.truthy(sent[1]:find('"revealed":false', 1, true), sent[1])
+    T.eq(sent[1]:find('"canFound"', 1, true), nil, "founding legality would describe unseen land")
+    T.eq(sent[1]:find('"freshWater"', 1, true), nil)
+    Map = origMap
+    restoreGame()
     Players[0] = nil
 end
 

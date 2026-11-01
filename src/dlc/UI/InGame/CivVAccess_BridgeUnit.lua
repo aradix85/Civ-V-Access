@@ -280,6 +280,7 @@ local function commitMove(unit, plot)
         false,
         false
     )
+    Bridge.sent()
     return result
 end
 
@@ -373,6 +374,7 @@ function actions.unit_action(idArg, action, arg1, arg2)
         for _, matches in ipairs(matchers) do
             local row = UnitActionMenu.commitWhere(unit, matches)
             if row ~= nil then
+                Bridge.sent()
                 return row
             end
         end

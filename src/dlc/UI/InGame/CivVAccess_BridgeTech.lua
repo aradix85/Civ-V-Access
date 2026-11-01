@@ -61,6 +61,7 @@ function actions.set_research(goal, mode)
             error(name .. " cannot be taken as a free technology now")
         end
         Network.SendResearch(tech.ID, free, -1, false)
+        Bridge.sent()
         Bridge.speak(Text.format("TXT_KEY_CIVVACCESS_CHOOSETECH_COMMIT_FREE", name))
         local teamID = player:GetTeam()
         return { tech = name, mode = mode }, function()
@@ -74,6 +75,7 @@ function actions.set_research(goal, mode)
     local positionBefore = player:GetQueuePosition(tech.ID)
     local currentBefore = player:GetCurrentResearch()
     Network.SendResearch(tech.ID, 0, -1, mode == "append")
+    Bridge.sent()
     if mode == "append" then
         Bridge.speak(Text.format("TXT_KEY_CIVVACCESS_TECHTREE_QUEUED_COMMIT", name))
     else

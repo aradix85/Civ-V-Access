@@ -159,6 +159,44 @@ def test_action_without_reply_warns_against_retrying():
     _with_fake_game([None], check)
 
 
+def test_action_is_stamped_on_the_games_own_clock():
+    reply = {"id": "a", "ok": True, "data": {"confirmed": True}}
+    skewed = dict(GAME_INFO, gameClock=1000)
+
+    def check(calls):
+        server.call_tool("civ5_set_research", {"goal": "Writing"})
+        name, args = calls[-1]
+        assert name == "set_research" and args[2] == 1000, args
+
+    def fake_query(name, *args, timeout=None):
+        calls.append((name, args))
+        return json.loads(json.dumps(skewed if name == "game_info" else reply))
+
+    calls = []
+    original_query, original_dir = server.game_query, server.NOTES_DIR
+    server.game_query = fake_query
+    with tempfile.TemporaryDirectory() as base:
+        server.NOTES_DIR = base
+        try:
+            check(calls)
+        finally:
+            server.game_query = original_query
+            server.NOTES_DIR = original_dir
+
+
+def test_a_briefing_query_that_times_out_costs_only_its_section():
+    replies = [{"id": "b", "ok": True, "data": {}} for _ in server.BRIEFING_QUERIES]
+    replies[1] = None
+
+    def check(_calls):
+        text, is_error = server.call_tool("civ5_briefing", {})
+        assert not is_error, text
+        result = json.loads(text)
+        assert any(u.startswith("city_details: no reply") for u in result["unavailable"]), result
+
+    _with_fake_game(replies, check)
+
+
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 

@@ -89,6 +89,7 @@ function actions.set_production(cityName, item, mode)
     else
         Game.CityPushOrder(city, orderType, row.ID, false, true, true)
     end
+    Bridge.sent()
     Events.SpecificCityInfoDirty(city:GetOwner(), city:GetID(), CityUpdateTypes.CITY_UPDATE_TYPE_BANNER)
     Events.SpecificCityInfoDirty(city:GetOwner(), city:GetID(), CityUpdateTypes.CITY_UPDATE_TYPE_PRODUCTION)
     if mode == "append" and lengthBefore > 0 then
@@ -167,9 +168,13 @@ function actions.purchase(cityName, item, currency)
     end
     local yield = YieldTypes[yieldKey]
     local city = Bridge.ownCity(cityName)
-    refusePuppet(city)
-    local orderType, row, kind = Bridge.resolveProducible(item)
     local player = Bridge.activePlayer()
+    -- Venice (MayNotAnnex) buys in its own puppets, as the production
+    -- popup allows (g_bTheVeniceException).
+    if city:IsPuppet() and not player:MayNotAnnex() then
+        refusePuppet(city)
+    end
+    local orderType, row, kind = Bridge.resolveProducible(item)
     local ownerID, cityID = city:GetOwner(), city:GetID()
 
     if yield == YieldTypes.YIELD_GOLD and BuildingInvest.canInvest(city, orderType, row.ID) then
@@ -177,6 +182,7 @@ function actions.purchase(cityName, item, currency)
         if not BuildingInvest.perform(city, row.ID) then
             error(city:GetName() .. " cannot invest in " .. itemName(row) .. " now")
         end
+        Bridge.sent()
         return { city = city:GetName(), item = itemName(row), invested = true, cost = cost, currency = currency }, function()
             local c = Players[ownerID]:GetCityByID(cityID)
             if not EngineData.buildingInvested(c, row.ID) then
@@ -198,6 +204,7 @@ function actions.purchase(cityName, item, currency)
     else
         Game.CityPurchaseProject(city, row.ID, yield)
     end
+    Bridge.sent()
     Events.SpecificCityInfoDirty(ownerID, cityID, CityUpdateTypes.CITY_UPDATE_TYPE_BANNER)
     Events.SpecificCityInfoDirty(ownerID, cityID, CityUpdateTypes.CITY_UPDATE_TYPE_PRODUCTION)
     Events.AudioPlay2DSound("AS2D_INTERFACE_CITY_SCREEN_PURCHASE")
@@ -227,6 +234,7 @@ function actions.city_automation(cityName, state)
     refusePuppet(city)
     local on = state == "on"
     Network.SendDoTask(city:GetID(), TaskTypes.TASK_SET_AUTOMATED_PRODUCTION, -1, -1, on, false, false, false)
+    Bridge.sent()
     local label = Text.key(on and "TXT_KEY_CIVVACCESS_CHECK_ON" or "TXT_KEY_CIVVACCESS_CHECK_OFF")
     Bridge.speak(city:GetName() .. ", " .. Text.format("TXT_KEY_CIVVACCESS_CITYVIEW_PROD_AUTOMATE", label))
 

@@ -27,7 +27,10 @@
 -- the reply goes out marked unconfirmed.
 --
 -- Request: one line of tab-separated fields: <id> <query> [<arg> ...].
--- Response: a JSON envelope {id, turn, activePlayer, ok, data | error}.
+-- Response: a JSON envelope {id, turn, activePlayer, gameClock, ok,
+-- data | error}. gameClock is the game machine's os.time(); the server
+-- stamps action requests with it, so a clock difference between the two
+-- machines cannot make every action look expired.
 -- The id is caller-chosen and echoed verbatim so the server can discard
 -- a stale response left over from an earlier, abandoned request.
 --
@@ -609,6 +612,11 @@ function queries.evaluate_settle(xs, ys)
     if plot == nil then
         error("no plot at (" .. tostring(xs) .. ", " .. tostring(ys) .. ")")
     end
+    -- An unrevealed tile answers nothing: founding legality, water and
+    -- travel there would all describe land the player has never seen.
+    if not plot:IsRevealed(Game.GetActiveTeam(), false) then
+        return { revealed = false }
+    end
     local me = Game.GetActivePlayer()
     local p = Players[me]
     local data = {
@@ -769,6 +777,10 @@ local pendingAction = nil
 
 local actions = {}
 Rpc._actions = actions
+-- Set by Bridge.sent() once an action has issued its net message. An error
+-- raised after that point (in speech, say) must not read as "nothing
+-- happened", or the assistant may send the command again.
+Rpc._actionSent = false
 -- Wall clock for the verify timeout; a seam for the offline suite.
 Rpc._clock = os.clock
 
@@ -844,11 +856,18 @@ local function runAction(envelope, name, fields)
         envelope.error = refusal
         return true
     end
+    Rpc._actionSent = false
     local okCall, result, verify = pcall(actions[name], unpack(fields, 6))
     if not okCall then
         Log.error("Rpc: action '" .. name .. "' failed: " .. tostring(result))
-        envelope.ok = false
-        envelope.error = (tostring(result):gsub("^.-:%d+: ", ""))
+        local reason = (tostring(result):gsub("^.-:%d+: ", ""))
+        if Rpc._actionSent then
+            envelope.ok = true
+            envelope.data = { confirmed = false, errorAfterSend = reason }
+        else
+            envelope.ok = false
+            envelope.error = reason
+        end
         return true
     end
     envelope.ok = true
@@ -884,6 +903,7 @@ function Rpc._poll()
         id = id,
         turn = Game.GetGameTurn(),
         activePlayer = Game.GetActivePlayer(),
+        gameClock = os.time and os.time() or nil,
     }
     -- The origin of the coordinates the player hears in game (original
     -- capital, per HexGeom.coordinateString). The MCP server uses it to

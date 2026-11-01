@@ -17,7 +17,8 @@
 -- leader) answers with what sets it apart: its leader's traits and the
 -- units, buildings and improvements only it has, each unique with the
 -- standard one it replaces, plus any standard unit or building it cannot
--- make at all.
+-- make at all. The barbarians and the shared city-state civilization are
+-- not civilizations a player can ask about.
 
 local queries = Rpc._queries
 
@@ -67,7 +68,9 @@ end
 -- Beyond Rpc.resolveRow's Type and Description matches: the short name
 -- ("Babylon", where Description is "Babylonian Empire"), the adjective,
 -- or one of the civilization's leaders.
-local function resolveCivilization(name)
+local NOT_A_CIVILIZATION = { CIVILIZATION_BARBARIAN = true, CIVILIZATION_MINOR = true }
+
+local function findCivilization(name)
     local row = Rpc.resolveRow("Civilizations", "CIVILIZATION_", name)
     if row ~= nil then
         return row
@@ -94,6 +97,14 @@ local function resolveCivilization(name)
         end
     end
     return nil
+end
+
+local function resolveCivilization(name)
+    local row = findCivilization(name)
+    if row ~= nil and NOT_A_CIVILIZATION[row.Type] then
+        return nil
+    end
+    return row
 end
 
 local function resolve(kindArg, name)
@@ -130,54 +141,92 @@ local BUILDING_OVERRIDES = {
     items = "Buildings",
 }
 
+local function addOnce(list, name)
+    if name == nil then
+        return
+    end
+    for _, existing in ipairs(list) do
+        if existing == name then
+            return
+        end
+    end
+    list[#list + 1] = name
+end
+
 -- The civilization's overrides of one class table: uniques with the
 -- standard entry they replace, and classes it cannot make (an override
--- whose unit or building is NULL).
+-- whose unit or building is NULL). A class with no standard entry (Vox
+-- Populi's Fusta) has nothing to replace.
 local function overrides(spec, civType)
     local unique, cannot = {}, {}
     for r in GameInfo[spec.overrides]({ CivilizationType = civType }) do
         local class = GameInfo[spec.classes][r[spec.class]]
-        local default = class and GameInfo[spec.items][class[spec.default]]
+        local default = GameInfo[spec.items][class[spec.default]]
         if r[spec.item] == nil then
             if default ~= nil then
-                cannot[#cannot + 1] = Text.key(default.Description)
+                addOnce(cannot, text(default.Description))
             end
         else
             local item = GameInfo[spec.items][r[spec.item]]
-            if item ~= nil then
-                local entry = { name = Text.key(item.Description) }
+            if item == nil then
+                Log.warn("explain: " .. spec.overrides .. " names missing " .. tostring(r[spec.item]))
+            else
+                local entry = { name = text(item.Description) }
                 if default ~= nil and default.Type ~= item.Type then
-                    entry.replaces = Text.key(default.Description)
+                    entry.replaces = text(default.Description)
                 end
-                unique[#unique + 1] = entry
+                if entry.name ~= nil then
+                    unique[#unique + 1] = entry
+                end
             end
         end
     end
     return unique, cannot
 end
 
+-- A leader's traits by name and effect. Trait_NoTrain bans whole unit
+-- classes (Venice's settlers; under Vox Populi also its pioneers and
+-- colonists, and India's missionaries); those land in noUnits.
+local function leaderTraits(leaderType, noUnits)
+    local traits = {}
+    for lt in GameInfo.Leader_Traits({ LeaderType = leaderType }) do
+        local trait = GameInfo.Traits[lt.TraitType]
+        if trait == nil then
+            Log.warn("explain: Leader_Traits names missing trait " .. tostring(lt.TraitType))
+        else
+            local entry = { name = text(trait.ShortDescription), effect = text(trait.Description) }
+            if entry.name ~= nil or entry.effect ~= nil then
+                traits[#traits + 1] = entry
+            end
+            for ban in GameInfo.Trait_NoTrain({ TraitType = trait.Type }) do
+                local class = GameInfo.UnitClasses[ban.UnitClassType]
+                local default = GameInfo.Units[class.DefaultUnit]
+                if default ~= nil then
+                    addOnce(noUnits, text(default.Description))
+                end
+            end
+        end
+    end
+    return traits
+end
+
 local function describeCivilization(out, row)
-    out.name = Text.key(row.ShortDescription)
+    out.name = text(row.ShortDescription)
+    local units, noUnits = overrides(UNIT_OVERRIDES, row.Type)
+    local buildings, noBuildings = overrides(BUILDING_OVERRIDES, row.Type)
     local leaders = {}
     for link in GameInfo.Civilization_Leaders({ CivilizationType = row.Type }) do
         local leader = GameInfo.Leaders[link.LeaderheadType]
-        if leader ~= nil then
-            local traits = {}
-            for lt in GameInfo.Leader_Traits({ LeaderType = leader.Type }) do
-                local trait = GameInfo.Traits[lt.TraitType]
-                if trait ~= nil then
-                    traits[#traits + 1] = { name = text(trait.ShortDescription), effect = text(trait.Description) }
-                end
-            end
-            leaders[#leaders + 1] = { name = Text.key(leader.Description), traits = traits }
+        if leader == nil then
+            Log.warn("explain: Civilization_Leaders names missing leader " .. tostring(link.LeaderheadType))
+        else
+            leaders[#leaders + 1] = { name = text(leader.Description), traits = leaderTraits(leader.Type, noUnits) }
         end
     end
     out.leaders = leaders
-    local units, noUnits = overrides(UNIT_OVERRIDES, row.Type)
-    local buildings, noBuildings = overrides(BUILDING_OVERRIDES, row.Type)
     local improvements = {}
     for imp in GameInfo.Improvements({ CivilizationType = row.Type }) do
-        improvements[#improvements + 1] = Text.key(imp.Description)
+        improvements[#improvements + 1] = text(imp.Description)
     end
     out.uniqueUnits = units
     out.uniqueBuildings = buildings

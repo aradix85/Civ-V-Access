@@ -125,6 +125,7 @@ local GAMEINFO_TABLES = {
     "Traits",
     "Civilization_Leaders",
     "Leader_Traits",
+    "Trait_NoTrain",
 }
 
 local function withEnv(fn)
@@ -142,6 +143,7 @@ local function withEnv(fn)
         "MinorCivTraitTypes",
         "GetActiveQuestToolTip",
         "PreGame",
+        "MapUtilities",
     }) do
         save(_G, name)
     end
@@ -152,6 +154,7 @@ local function withEnv(fn)
         "GetResourceUsageType",
         "GetReligionName",
         "GetMaxTurns",
+        "GetStartTurn",
         "IsNetworkMultiPlayer",
     }) do
         save(Game, k)
@@ -247,7 +250,8 @@ local function fakeCity(opts)
         GetY = 4,
         IsCapital = opts.capital or false,
         GetPopulation = 4,
-        FoodDifference = opts.food,
+        FoodDifferenceTimes100 = (opts.food or 0) * 100,
+        IsFoodProduction = opts.foodProduction or false,
         GetFood = 10,
         GrowthThreshold = 30,
         GetFoodTurnsLeft = opts.turnsToGrow or 0,
@@ -294,9 +298,15 @@ function M.test_city_summary_growth_and_production_turns()
         installCityPlayer({
             fakeCity({ name = "Rome", capital = true, food = 3, turnsToGrow = 5, queue = { { 0, 0 } } }),
             fakeCity({ name = "Antium", food = -2, process = true, queue = { { 3, 0 } } }),
+            fakeCity({ name = "Cumae", food = 0.5, turnsToGrow = 40, queue = {} }),
+            fakeCity({ name = "Veii", food = 0, foodProduction = true, queue = {} }),
         })
         local data = Rpc._queries.city_details()
-        local rome, antium = data.cities[1], data.cities[2]
+        local rome, antium, cumae, veii = data.cities[1], data.cities[2], data.cities[3], data.cities[4]
+        T.eq(cumae.food.perTurn, 0.5, "half a food of surplus is not rounded away")
+        T.eq(cumae.food.turnsToGrow, 40)
+        T.eq(veii.food.intoProduction, true, "food turned into production is not stagnation")
+        T.eq(veii.food.starving, nil)
         T.eq(rome.food.turnsToGrow, 5)
         T.eq(rome.food.starving, nil)
         T.eq(rome.production.current.name, "Warrior")
@@ -431,6 +441,45 @@ function M.test_empire_policy_countdown_resources_and_no_ideology()
             res[#res + 1] = r.name .. ":" .. r.kind .. ":" .. r.available
         end
         T.eq(table.concat(res, ","), "Wine:luxury:2,Horses:strategic:-1", "zero stock and bonus resources omitted")
+        T.eq(data.pantheon, nil)
+    end)
+end
+
+function M.test_empire_religion_without_a_pantheon_belief()
+    withEnv(function()
+        GameInfo.Eras = infoTable({ { Type = "ERA_ANCIENT", Description = "Ancient Era" } })
+        Teams[0] = fake({ GetTeamTechs = fake({ GetNumTechsKnown = 3 }) })
+        Players[0] = fake({
+            GetTeam = 0,
+            GetCivilizationShortDescription = "Rome",
+            GetName = "Augustus",
+            GetCurrentEra = 0,
+            GetScore = 50,
+            GetNumCities = 2,
+            GetTotalPopulation = 7,
+            GetNumUnits = 4,
+            GetGold = 100,
+            CalculateGoldRate = 5,
+            GetScience = 8,
+            GetFaith = 0,
+            GetTotalFaithPerTurn = 1,
+            GetNumInternationalTradeRoutesUsed = 0,
+            GetNumInternationalTradeRoutesAvailable = 1,
+            GetCurrentResearch = -1,
+            GetJONSCulture = 30,
+            GetTotalJONSCulturePerTurn = 10,
+            GetNextPolicyCost = 75,
+            GetNumFreePolicies = 0,
+            GetGoldenAgeTurns = 0,
+            GetGoldenAgeProgressMeter = 20,
+            GetGoldenAgeProgressThreshold = 500,
+            GetLateGamePolicyTree = -1,
+            HasCreatedPantheon = true,
+            GetBeliefInPantheon = -1,
+            GetNumResourceAvailable = 0,
+        })
+        local data = Rpc._queries.empire_overview()
+        T.eq(data.pantheon, nil, "a religion with no pantheon belief names no pantheon")
     end)
 end
 
@@ -816,10 +865,15 @@ function M.test_explain_civilization_by_leader_or_adjective_lists_traits_and_uni
                 ShortDescription = "Babylon",
                 Adjective = "Babylonian",
             },
+            { Type = "CIVILIZATION_BARBARIAN", Description = "Barbarians", ShortDescription = "Barbarians" },
         })
-        GameInfo.Leaders = infoTable({ { Type = "LEADER_NEBUCHADNEZZAR", Description = "Nebuchadnezzar II" } })
+        GameInfo.Leaders = infoTable({
+            { Type = "LEADER_NEBUCHADNEZZAR", Description = "Nebuchadnezzar II" },
+            { Type = "LEADER_HAMMURABI", Description = "Hammurabi" },
+        })
         GameInfo.Civilization_Leaders = infoTable({
             { CivilizationType = "CIVILIZATION_BABYLON", LeaderheadType = "LEADER_NEBUCHADNEZZAR" },
+            { CivilizationType = "CIVILIZATION_BABYLON", LeaderheadType = "LEADER_HAMMURABI" },
         })
         GameInfo.Traits = infoTable({
             {
@@ -827,16 +881,30 @@ function M.test_explain_civilization_by_leader_or_adjective_lists_traits_and_uni
                 ShortDescription = "Ingenuity",
                 Description = "[ICON_GREAT_PEOPLE] Free Great Scientist.",
             },
+            { Type = "TRAIT_CODE", ShortDescription = "TXT_KEY_NEVER_DEFINED", Description = "Laws." },
+            { Type = "TRAIT_UNNAMED", ShortDescription = "TXT_KEY_NEVER_DEFINED" },
         })
-        GameInfo.Leader_Traits = infoTable({ { LeaderType = "LEADER_NEBUCHADNEZZAR", TraitType = "TRAIT_INGENUITY" } })
+        GameInfo.Leader_Traits = infoTable({
+            { LeaderType = "LEADER_NEBUCHADNEZZAR", TraitType = "TRAIT_INGENUITY" },
+            { LeaderType = "LEADER_HAMMURABI", TraitType = "TRAIT_CODE" },
+            { LeaderType = "LEADER_HAMMURABI", TraitType = "TRAIT_UNNAMED" },
+        })
+        GameInfo.Trait_NoTrain = infoTable({
+            { TraitType = "TRAIT_INGENUITY", UnitClassType = "UNITCLASS_SETTLER" },
+            { TraitType = "TRAIT_CODE", UnitClassType = "UNITCLASS_MISSIONARY" },
+        })
         GameInfo.Units = infoTable({
             { Type = "UNIT_ARCHER", Description = "Archer" },
             { Type = "UNIT_BABYLONIAN_BOWMAN", Description = "Bowman" },
             { Type = "UNIT_SETTLER", Description = "Settler" },
+            { Type = "UNIT_MISSIONARY", Description = "Missionary" },
+            { Type = "UNIT_FUSTA", Description = "Fusta" },
         })
         GameInfo.UnitClasses = infoTable({
             { Type = "UNITCLASS_ARCHER", DefaultUnit = "UNIT_ARCHER" },
             { Type = "UNITCLASS_SETTLER", DefaultUnit = "UNIT_SETTLER" },
+            { Type = "UNITCLASS_MISSIONARY", DefaultUnit = "UNIT_MISSIONARY" },
+            { Type = "UNITCLASS_FUSTA" },
         })
         GameInfo.Civilization_UnitClassOverrides = infoTable({
             {
@@ -845,23 +913,56 @@ function M.test_explain_civilization_by_leader_or_adjective_lists_traits_and_uni
                 UnitType = "UNIT_BABYLONIAN_BOWMAN",
             },
             { CivilizationType = "CIVILIZATION_BABYLON", UnitClassType = "UNITCLASS_SETTLER" },
+            { CivilizationType = "CIVILIZATION_BABYLON", UnitClassType = "UNITCLASS_FUSTA", UnitType = "UNIT_FUSTA" },
             { CivilizationType = "CIVILIZATION_OTHER", UnitClassType = "UNITCLASS_ARCHER", UnitType = "UNIT_ARCHER" },
+        })
+        GameInfo.Buildings = infoTable({
+            { Type = "BUILDING_WALLS", Description = "Walls" },
+            { Type = "BUILDING_WALLS_OF_BABYLON", Description = "Walls of Babylon" },
+            { Type = "BUILDING_WELL", Description = "Well" },
+        })
+        GameInfo.BuildingClasses = infoTable({
+            { Type = "BUILDINGCLASS_WALLS", DefaultBuilding = "BUILDING_WALLS" },
+            { Type = "BUILDINGCLASS_WELL", DefaultBuilding = "BUILDING_WELL" },
+        })
+        GameInfo.Civilization_BuildingClassOverrides = infoTable({
+            {
+                CivilizationType = "CIVILIZATION_BABYLON",
+                BuildingClassType = "BUILDINGCLASS_WALLS",
+                BuildingType = "BUILDING_WALLS_OF_BABYLON",
+            },
+            { CivilizationType = "CIVILIZATION_BABYLON", BuildingClassType = "BUILDINGCLASS_WELL" },
         })
         GameInfo.Improvements = infoTable({
             { Type = "IMPROVEMENT_FARM", Description = "Farm" },
-            { Type = "IMPROVEMENT_BABYLON", Description = "Garden Terrace", CivilizationType = "CIVILIZATION_BABYLON" },
+            {
+                Type = "IMPROVEMENT_GARDEN_TERRACE",
+                Description = "Garden Terrace",
+                CivilizationType = "CIVILIZATION_BABYLON",
+            },
         })
         local data = Rpc._queries.explain("Nebuchadnezzar II")
         T.eq(data.kind, "civilization")
         T.eq(data.name, "Babylon", "the short name, not the empire description")
+        T.eq(#data.leaders, 2, "every leader of the civilization is listed")
         T.eq(data.leaders[1].traits[1].name, "Ingenuity")
         T.falsy(data.leaders[1].traits[1].effect:find("[ICON", 1, true), "trait markup filtered")
-        T.eq(#data.uniqueUnits, 1, "another civilization's override is not listed")
+        T.eq(data.leaders[2].traits[1].name, nil, "an undefined trait name is dropped, not returned raw")
+        T.eq(data.leaders[2].traits[1].effect, "Laws.")
+        T.eq(#data.leaders[2].traits, 1, "a trait with no defined text at all is left out")
+        T.eq(#data.uniqueUnits, 2, "another civilization's override is not listed")
         T.eq(data.uniqueUnits[1].name, "Bowman")
         T.eq(data.uniqueUnits[1].replaces, "Archer")
-        T.eq(data.cannotTrain[1], "Settler", "an override without a unit means the class cannot be trained")
+        T.eq(data.uniqueUnits[2].name, "Fusta")
+        T.eq(data.uniqueUnits[2].replaces, nil, "a class without a standard unit replaces nothing")
+        T.eq(table.concat(data.cannotTrain, ","), "Settler,Missionary", "override and trait bans, each named once")
+        T.eq(data.uniqueBuildings[1].name, "Walls of Babylon")
+        T.eq(data.uniqueBuildings[1].replaces, "Walls")
+        T.eq(data.cannotBuild[1], "Well", "an override without a building means the class cannot be built")
         T.eq(#data.uniqueImprovements, 1)
         T.eq(Rpc._queries.explain("babylonian").name, "Babylon", "the adjective resolves too")
+        T.eq(Rpc._queries.explain("babylon").name, "Babylon", "and so does the short name")
+        T.falsy(pcall(Rpc._queries.explain, "barbarians"), "the barbarians are not a civilization to explain")
     end)
 end
 
@@ -869,11 +970,22 @@ end
 
 function M.test_game_settings_lists_what_the_game_menu_shows()
     withEnv(function()
-        GameInfo.Eras = infoTable({ { Type = "ERA_ANCIENT", Description = "Ancient Era" } })
-        GameInfo.Worlds = infoTable({ { Type = "WORLDSIZE_HUGE", Description = "Huge" } })
-        GameInfo.HandicapInfos = infoTable({ { Type = "HANDICAP_WARLORD", Description = "Warlord" } })
-        GameInfo.GameSpeeds = infoTable({ { Type = "GAMESPEED_MARATHON", Description = "Marathon" } })
-        GameInfo.MapScripts = infoTable({ { FileName = "Assets\\Maps\\Pangaea.lua", Name = "Pangaea" } })
+        GameInfo.Eras = infoTable({
+            { Type = "ERA_ANCIENT", Description = "Ancient Era" },
+            { Type = "ERA_CLASSICAL", Description = "Classical Era" },
+        })
+        GameInfo.Worlds = infoTable({
+            { Type = "WORLDSIZE_SMALL", Description = "Small", DefaultMinorCivs = 8 },
+            { Type = "WORLDSIZE_HUGE", Description = "Huge", DefaultMinorCivs = 24 },
+        })
+        GameInfo.HandicapInfos = infoTable({
+            { Type = "HANDICAP_SETTLER", Description = "Settler" },
+            { Type = "HANDICAP_WARLORD", Description = "Warlord" },
+        })
+        GameInfo.GameSpeeds = infoTable({
+            { Type = "GAMESPEED_STANDARD", Description = "Standard" },
+            { Type = "GAMESPEED_MARATHON", Description = "Marathon" },
+        })
         GameInfo.Victories = infoTable({
             { Type = "VICTORY_TIME", Description = "Time" },
             { Type = "VICTORY_SPACE_RACE", Description = "Science" },
@@ -885,27 +997,32 @@ function M.test_game_settings_lists_what_the_game_menu_shows()
                 Help = "[ICON_WAR] Fewer barbarians.",
                 Visible = 1,
                 SupportsSinglePlayer = 1,
+                SupportsMultiplayer = 1,
             },
+            { Type = "GAMEOPTION_NO_HELP", Description = "No help", Visible = 1, SupportsSinglePlayer = 1 },
             { Type = "GAMEOPTION_OFF", Description = "Off", Visible = 1, SupportsSinglePlayer = 1 },
             { Type = "GAMEOPTION_HIDDEN", Description = "Hidden", Visible = 0, SupportsSinglePlayer = 1 },
-            { Type = "GAMEOPTION_MP_ONLY", Description = "Multiplayer only", Visible = 1, SupportsSinglePlayer = 0 },
+            { Type = "GAMEOPTION_MP_ONLY", Description = "Multiplayer only", Visible = 1, SupportsMultiplayer = 1 },
         })
-        local mapScript = "Assets\\Maps\\Random_Earth_Huge.Civ5Map"
+        local minorCivs, maxTurns, network = 16, 1500, false
         PreGame = {
             GetEra = function()
-                return 0
+                return 1
             end,
             GetWorldSize = function()
-                return 0
+                return 1
             end,
-            GetHandicap = function()
-                return 0
+            GetHandicap = function(player)
+                return player == 0 and 1 or 0
             end,
             GetGameSpeed = function()
-                return 0
+                return 1
             end,
             GetMapScript = function()
-                return mapScript
+                return "Assets\\Maps\\Earth_Huge.Civ5Map"
+            end,
+            GetNumMinorCivs = function()
+                return minorCivs
             end,
             IsVictory = function(id)
                 return id == 1
@@ -917,32 +1034,45 @@ function M.test_game_settings_lists_what_the_game_menu_shows()
                 return 1
             end,
         }
+        MapUtilities = {
+            GetBasicInfo = function(fileName)
+                return { Name = fileName == "Assets\\Maps\\Earth_Huge.Civ5Map" and "Earth" or "TXT_KEY_MISC_UNKNOWN" }
+            end,
+        }
         Game.GetMaxTurns = function()
-            return 1500
+            return maxTurns
+        end
+        Game.GetStartTurn = function()
+            return 20
         end
         Game.IsNetworkMultiPlayer = function()
-            return false
+            return network
         end
         for i = 0, GameDefines.MAX_CIV_PLAYERS - 1 do
-            Players[i] = fake({
-                IsEverAlive = i < 3 or i >= GameDefines.MAX_CIV_PLAYERS - 2,
-                IsMinorCiv = i >= GameDefines.MAX_MAJOR_CIVS,
-            })
+            Players[i] = fake({ IsEverAlive = i < 3 or i >= GameDefines.MAX_MAJOR_CIVS })
         end
         local data = Rpc._queries.game_settings()
+        T.eq(data.startEra, "Classical Era")
+        T.eq(data.mapSize, "Huge")
         T.eq(data.pace, "Marathon")
-        T.eq(data.difficulty, "Warlord")
-        T.eq(data.maxTurns, 1500)
-        T.eq(data.mapType, "Random_Earth_Huge", "a world-builder map falls back to its file stem")
+        T.eq(data.difficulty, "Warlord", "the active player's difficulty")
+        T.eq(data.lastTurn, 1520, "the turn limit counts from the start turn")
+        T.eq(data.mapType, "Earth", "the map is named as the game menu names it")
         T.eq(#data.victoryTypes, 1)
         T.eq(data.victoryTypes[1], "Science")
-        T.eq(#data.gameOptions, 1, "disabled, hidden and multiplayer-only options are left out")
+        T.eq(#data.gameOptions, 2, "disabled, hidden and multiplayer-only options are left out")
         T.eq(data.gameOptions[1].name, "Chill Barbarians")
         T.falsy(data.gameOptions[1].help:find("[ICON", 1, true), "help markup filtered")
+        T.eq(data.gameOptions[2].help, nil, "an option without help text has none")
         T.eq(data.civilizations, 3)
-        T.eq(data.cityStates, 2)
-        mapScript = "Assets\\Maps\\Pangaea.lua"
-        T.eq(Rpc._queries.game_settings().mapType, "Pangaea", "a scripted map uses its localized name")
+        T.eq(data.cityStates, 16, "the setup value, not the city-state slots that ever lived")
+
+        minorCivs, maxTurns, network = -1, 0, true
+        data = Rpc._queries.game_settings()
+        T.eq(data.cityStates, 24, "the setup default follows the map size")
+        T.eq(data.lastTurn, nil, "no turn limit, no last turn")
+        T.eq(#data.gameOptions, 2, "a network game lists the multiplayer options")
+        T.eq(data.gameOptions[2].name, "Multiplayer only")
     end)
 end
 

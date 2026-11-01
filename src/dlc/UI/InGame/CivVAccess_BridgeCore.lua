@@ -161,6 +161,12 @@ function Bridge.withUnitSelected(unit, fn)
     return unpack(results, 2)
 end
 
+-- Call right after an action's net message goes out: from here on an
+-- error no longer means the command was not given (see Rpc._actionSent).
+function Bridge.sent()
+    Rpc._actionSent = true
+end
+
 -- Speech for what the assistant did, queued behind whatever the player is
 -- hearing rather than cutting it off.
 function Bridge.speak(text)

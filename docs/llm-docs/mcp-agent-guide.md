@@ -143,7 +143,14 @@ the options and their trade-offs and leave the decision to the player.
 - `civ5_victory_progress` — how close anyone is to winning, per enabled
   victory type; unmet civilizations stay unnamed.
 - `civ5_explain` — what something does, from this game's own rules text
-  (Vox Populi's where it differs). Numbers are base database values.
+  (Vox Populi's where it differs). Numbers are base database values. A
+  civilization (by name, adjective or leader) answers with its leader
+  traits, unique units, buildings and improvements and what each
+  replaces, and what it cannot train or build.
+- `civ5_game_settings` — how the game was set up, as the game menu's
+  details tab lists it: era, map, difficulty, pace, the last turn when
+  there is a turn limit, victory types, enabled game options with their
+  help text, and the civilization and city-state counts.
 - `civ5_units` — the player's own units with the id the unit action
   takes, tile, moves, health when damaged, current activity, whether it
   waits for orders, promotion ready, and an available upgrade with its

@@ -62,8 +62,20 @@ local function productionQueue(city)
     return queue
 end
 
+-- The culture that grows a city's borders. The Community Patch gives
+-- border growth its own yield (CULTURE_LOCAL); GetJONSCulturePerTurn is
+-- the city's whole culture output there. Same rule as
+-- CitySpeech.borderGrowthToken.
+local function borderCulturePerTurn(city)
+    if YieldTypes.YIELD_CULTURE_LOCAL ~= nil then
+        return city:GetYieldRateTimes100(YieldTypes.YIELD_CULTURE_LOCAL) / 100
+    end
+    return city:GetJONSCulturePerTurn()
+end
+
 local function citySummary(player, city)
-    local foodPerTurn = city:FoodDifference()
+    -- Hundredths, so half a food of surplus is not read as zero.
+    local foodPerTurn = city:FoodDifferenceTimes100() / 100
     local productionPerTurn = city:GetCurrentProductionDifferenceTimes100(false, false) / 100
     local entry = {
         name = city:GetName(),
@@ -86,7 +98,11 @@ local function citySummary(player, city)
         maxHealth = city:GetMaxHitPoints(),
         defense = math.floor(city:GetStrengthValue() / 100),
     }
-    if foodPerTurn > 0 then
+    -- A city turning its food into production (building a settler) does
+    -- not grow by design; that is neither stagnation nor starvation.
+    if city:IsFoodProduction() then
+        entry.food.intoProduction = true
+    elseif foodPerTurn > 0 then
         entry.food.turnsToGrow = city:GetFoodTurnsLeft()
     elseif foodPerTurn < 0 then
         entry.food.starving = true
@@ -214,7 +230,7 @@ function queries.city_details(name)
     local cultureStored = city:GetJONSCultureStored()
     local cultureNeeded = city:GetJONSCultureThreshold()
     data.borderGrowth = { stored = cultureStored, threshold = cultureNeeded }
-    local culturePerTurn = city:GetJONSCulturePerTurn()
+    local culturePerTurn = borderCulturePerTurn(city)
     if culturePerTurn > 0 then
         data.borderGrowth.turns = math.max(0, math.ceil((cultureNeeded - cultureStored) / culturePerTurn))
     end

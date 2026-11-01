@@ -113,6 +113,8 @@ purchase. Each reply says whether the game confirmed the change
 refusal's reason on as it is. The game speaks the result too, so keep
 your own confirmation short. If an action gets no reply it may still land
 when the game picks it up: check with a read tool before trying again. A
+reply with errorAfterSend means the command went out but something after
+it failed: do not repeat it; check with a read tool whether it landed. A
 production or research chooser the player has open keeps showing the old
 choice until they close it. Attacks are not offered; they stay with the
 player.
@@ -131,7 +133,9 @@ full notes when you need more than the briefing shows.
 
 Rules questions: civ5_explain answers from this game's own rules text,
 which under Vox Populi often differs from the base game you remember;
-prefer it over memory. civ5_victory_progress shows how close anyone is to
+prefer it over memory. It also explains a civilization: its leader traits
+and uniques. civ5_game_settings shows how this game was set up (pace,
+map, difficulty, victory types, game options). civ5_victory_progress shows how close anyone is to
 winning. civ5_diplomacy includes, for each AI, the reasons behind its
 mood with a valence from -4 to +4.
 
@@ -925,10 +929,11 @@ TOOLS = [
         "name": "civ5_game_settings",
         "description": (
             "How this game was set up, as the game menu's details tab lists "
-            "it: starting era, map type and size, difficulty, pace and its "
-            "turn limit, the enabled victory types, the enabled game options "
-            "(Vox Populi's included, each with its help text), and how many "
-            "civilizations and city-states the game started with."
+            "it: starting era, map type and size, difficulty, pace, the last "
+            "turn when there is a turn limit, the enabled victory types, the "
+            "enabled game options (Vox Populi's included, each with its help "
+            "text), and how many civilizations and city-states the game was "
+            "set up with."
         ),
         "inputSchema": {"type": "object", "properties": {}, "required": []},
     },
@@ -1249,8 +1254,9 @@ def call_action_tool(name, arguments):
             return f"invalid argument {text!r}: empty or contains a tab or line break", True
     query = name[len("civ5_"):]
     # The stamp the game checks before acting: this turn, this player, and
-    # when it was sent (a request picked up much later is refused).
-    stamp = (info["turn"], info["activePlayer"], int(time.time()))
+    # when it was sent (a request picked up much later is refused), on the
+    # game's own clock so the two machines' clocks need not agree.
+    stamp = (info["turn"], info["activePlayer"], info.get("gameClock") or int(time.time()))
     envelope = game_query(query, *stamp, *fields)
     if envelope is None:
         _journal(info, name, arguments, None, "no reply")
@@ -1308,8 +1314,11 @@ def call_briefing():
     for key, query, args in BRIEFING_QUERIES:
         envelope = game_query(query, *args)
         if envelope is None:
-            return NO_GAME_MESSAGE.format(timeout=RESPONSE_TIMEOUT_SECONDS), True
-        if envelope.get("ok"):
+            # game_info just answered, so the game is there; one slow
+            # query (a long AI turn, say) costs only its own section.
+            data[key] = {}
+            unavailable.append(f"{query}: no reply within {RESPONSE_TIMEOUT_SECONDS} seconds")
+        elif envelope.get("ok"):
             data[key] = envelope["data"]
         else:
             data[key] = {}
@@ -1336,6 +1345,7 @@ def call_briefing():
             data["units"].get("units", []),
             data["victory"],
             origin,
+            info["data"].get("growthPercent"),
         ),
     }
     game_notes = _notes_for(info)

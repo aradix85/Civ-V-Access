@@ -117,8 +117,14 @@ function queries.empire_overview()
         data.ideology = Text.key(GameInfo.PolicyBranchTypes[ideology].Description)
     end
 
+    -- Under the Community Patch HasCreatedPantheon is also true for a
+    -- player who has a religion but never founded a pantheon (one adopted
+    -- through a great prophet, say); there is then no pantheon belief.
     if player:HasCreatedPantheon() then
-        data.pantheon = Text.key(GameInfo.Beliefs[player:GetBeliefInPantheon()].ShortDescription)
+        local belief = GameInfo.Beliefs[player:GetBeliefInPantheon()]
+        if belief ~= nil then
+            data.pantheon = Text.key(belief.ShortDescription)
+        end
     end
     local religion = EngineData.ownedReligion(player)
     if religion >= 0 then
