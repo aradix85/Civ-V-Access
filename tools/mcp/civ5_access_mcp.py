@@ -90,6 +90,15 @@ meet. The image is never a data source: every number, distance, or
 direction you speak comes from the data tools' hex-math fields, not from
 counting pixels.
 
+Beyond the map: civ5_empire_overview for the state of the empire,
+civ5_city_details for what the player's cities have, make, and can make
+(name a city for its full detail), civ5_tech_plan for what to research
+and the path to a named goal, civ5_turn_summary for what happened since
+the last turn, civ5_diplomacy for standing with civilizations and
+city-states. These serve planning conversations -- what to build next,
+which way to research -- so lay out the options and their trade-offs and
+leave the decision to the player.
+
 Anchors: every spatial tool accepts an optional "anchor" argument --
 "capital" (default), "cursor" (the player's own map cursor), any known city
 name, or "x,y". All distanceFromAnchor / directionFromAnchor fields are
@@ -534,7 +543,117 @@ TOOLS = [
             "required": [],
         },
     },
+    {
+        "name": "civ5_city_details",
+        "description": (
+            "The inside of the player's own cities. Without a city: every "
+            "own city as a summary -- population, food per turn and turns "
+            "to grow (or starving), production per turn and what is being "
+            "built with turns left, gold, science, culture, faith, "
+            "tourism, health, defense, puppet / occupied / razing / "
+            "resistance, connection to the capital, and unhappiness under "
+            "the vanilla happiness model. With a city name: that city in "
+            "full -- the production queue, buildings and wonders it has, "
+            "everything it can produce right now with turn counts, "
+            "specialists, border growth, religion, and citizen focus."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "city": {
+                    "type": "string",
+                    "description": "One of the player's own cities by name. Omit for all cities.",
+                }
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "civ5_empire_overview",
+        "description": (
+            "The empire at a glance, the numbers the top panel shows: "
+            "treasury and gold per turn, science per turn and current "
+            "research, culture and turns to the next policy, faith, "
+            "happiness, golden age, tourism, trade routes, adopted "
+            "policies by branch, ideology, pantheon and religion, score, "
+            "and the luxury and strategic resources on hand (negative "
+            "means a shortage)."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "civ5_tech_plan",
+        "description": (
+            "Research planning. Without a target: the current research and "
+            "every technology researchable now, with turns and what each "
+            "unlocks (buildings, wonders, units, projects, improvements, "
+            "already filtered to the player's own civilization's uniques). "
+            "With a target -- a technology, building, wonder, unit or "
+            "project name -- the technologies still missing on the way "
+            "there in a valid research order, the science each still needs, "
+            "and a whole-path turn estimate at the current science rate."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target": {
+                    "type": "string",
+                    "description": (
+                        "What the player wants to reach, e.g. 'Philosophy', "
+                        "'University', 'Great Library', 'Knight'. Omit for "
+                        "what can be researched now."
+                    ),
+                }
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "civ5_turn_summary",
+        "description": (
+            "What happened since the player's last turn: what is blocking "
+            "the end of the turn, active notifications plus those dismissed "
+            "this turn or last, the F7 Turn Log (combat, unit moves, foreign "
+            "units entering and leaving view), and the most recent "
+            "message-buffer entries. Use it at the start of a turn or when "
+            "the player asks what just happened."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "messages": {
+                    "type": "integer",
+                    "description": "How many recent message-buffer entries to include (default 30).",
+                }
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "civ5_diplomacy",
+        "description": (
+            "Standing with every met civilization and city-state. "
+            "Civilizations: war, declared friendship, denunciations both "
+            "ways, defensive pact, research agreement, open borders and "
+            "embassies both ways, score, era, city count, and the mood the "
+            "game shows for an AI not at war. City-states: trait, "
+            "personality, influence, friend / ally status, their ally "
+            "(unnamed when unmet), war, active quests, and their capital's "
+            "tile when revealed."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
 ]
+
+# Queries the Lua bridge answers in full; the server relays the optional
+# argument and converts tile coordinates, nothing more.
+PASSTHROUGH_TOOLS = {
+    "civ5_city_details": ("city_details", "city"),
+    "civ5_empire_overview": ("empire_overview", None),
+    "civ5_tech_plan": ("tech_plan", "target"),
+    "civ5_turn_summary": ("turn_summary", "messages"),
+    "civ5_diplomacy": ("diplomacy", None),
+}
 
 GEOMETRY_TOOLS = {
     "civ5_map_overview",
@@ -720,6 +839,13 @@ def call_tool(name, arguments):
         )
     elif name in GEOMETRY_TOOLS:
         return call_geometry_tool(name, arguments)
+    elif name in PASSTHROUGH_TOOLS:
+        query, arg_name = PASSTHROUGH_TOOLS[name]
+        value = arguments.get(arg_name) if arg_name else None
+        if value is None or value == "":
+            envelope = game_query(query)
+        else:
+            envelope = game_query(query, value)
     else:
         return f"unknown tool: {name}", True
 

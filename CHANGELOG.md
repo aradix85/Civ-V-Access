@@ -11,6 +11,14 @@ start with `## [X.Y.Z] - YYYY-MM-DD` on its own line for the parser to find it.
 
 ## [Unreleased]
 
+New Features and improvements:
+
+- The MCP bridge can read your cities in detail: growth, production, buildings and what each city can build.
+- The MCP bridge can read your empire overview: treasury, research, culture, happiness, policies and resources.
+- The MCP bridge can plan research: what each tech unlocks and the path to a chosen tech, building or unit.
+- The MCP bridge can summarize your last turn: notifications, the turn log and recent messages.
+- The MCP bridge can read diplomacy: relations with civilizations and city-state influence and quests.
+
 ## [2.4.0] - 2026-10-22
 
 New Features and improvements:

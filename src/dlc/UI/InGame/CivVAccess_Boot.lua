@@ -219,6 +219,13 @@ include("CivVAccess_ChatBuffer")
 -- MCP bridge: answers file-RPC queries from the external MCP server via a
 -- TickPump subscriber. Read-only; inert unless a request file appears.
 include("CivVAccess_Rpc")
+-- Further bridge queries, each registering on Rpc._queries; they must load
+-- after CivVAccess_Rpc, which creates that table.
+include("CivVAccess_QueryCities")
+include("CivVAccess_QueryEmpire")
+include("CivVAccess_QueryTech")
+include("CivVAccess_QueryTurn")
+include("CivVAccess_QueryDiplo")
 
 -- Track the WorldView Context include count across the session. The first
 -- include happens during pre-game setup (before LoadScreenClose); subsequent

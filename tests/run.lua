@@ -289,6 +289,7 @@ T.register("shadowed_text_popup_announce", require("shadowed_text_popup_announce
 T.register("multiplayer_rewards", require("multiplayer_rewards_test"))
 T.register("mp_end_turn_reminder", require("mp_end_turn_reminder_test"))
 T.register("rpc", require("rpc_test"))
+T.register("bridge_queries", require("bridge_queries_test"))
 T.register("reveal_announce", require("reveal_announce_test"))
 T.register("foreign_unit_watch", require("foreign_unit_watch_test"))
 T.register("foreign_clear_watch", require("foreign_clear_watch_test"))

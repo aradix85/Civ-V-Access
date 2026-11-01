@@ -109,6 +109,34 @@ evidence supports: flag thin ones, don't hedge strong ones.
   fields, not from counting pixels. The accompanying text block carries
   the view bounds, the civ color legend, and how to read the markers.
 
+### Beyond the map
+
+These read the empire rather than the terrain. They serve planning
+conversations -- what to build next, which way to research -- so lay out
+the options and their trade-offs and leave the decision to the player.
+
+- `civ5_empire_overview` — treasury, science and current research,
+  culture and turns to the next policy, faith, happiness, golden age,
+  tourism, trade routes, adopted policies by branch, ideology, religion,
+  and the luxury and strategic resources on hand (negative is a
+  shortage).
+- `civ5_city_details` — every own city as a summary (growth, production
+  and turns left, yields, health, status), or one named city in full:
+  queue, buildings and wonders it has, everything it can produce now
+  with turn counts, specialists, border growth, religion, focus.
+- `civ5_tech_plan` — what is researchable now and what each tech
+  unlocks (filtered to the player's own uniques), or, with a target
+  tech / building / wonder / unit / project, the missing techs in a valid
+  order with the science still needed and a whole-path estimate at the
+  current rate. The estimate ignores future science growth; say so.
+- `civ5_turn_summary` — what is blocking the end of the turn, active and
+  recently dismissed notifications, the F7 Turn Log, and the latest
+  message-buffer entries. A natural opener at the start of a turn.
+- `civ5_diplomacy` — standing with every met civilization (war,
+  friendship, denunciations, pacts, agreements, open borders, embassies,
+  the mood the game shows) and city-state (trait, personality,
+  influence, status, ally, quests).
+
 ## Anchors
 
 Every spatial tool takes an optional `anchor`: `"capital"` (default),
