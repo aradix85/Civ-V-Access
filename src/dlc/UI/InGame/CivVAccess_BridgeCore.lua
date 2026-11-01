@@ -117,14 +117,19 @@ end
 -- Selecting a unit is how every unit command reaches the engine
 -- (HandleAction and the selection-list net messages act on the head
 -- selected unit). withUnitSelected selects the unit, runs fn, and puts the
--- player's previous selection back right away -- the net message already
--- carries the unit's id, so the command still goes to the right unit, and
--- the player's own next key acts on the unit they had, not on ours.
+-- player's previous selection back right away (or clears it when there was
+-- none) -- the net message already carries the unit's id, so the command
+-- still goes to the right unit, and the player's own next key acts on the
+-- unit they had, not on ours. The selection announcer stays quiet for the
+-- round trip, so the cursor does not move and only the order is spoken.
 -- Refuses while something else owns the selection: the city screen (the
 -- engine blocks unit actions while a city is selected), a targeting mode
 -- (the mod's pickers hold an interface mode), or any menu or mode on top
 -- of the map (the Tab menu commits to whatever unit is selected).
 local MAP_HANDLERS = { Baseline = true, Scanner = true }
+-- How long the selection announcer stays quiet around a bridge selection
+-- (UnitControlSelection); covers an engine event that lands a frame late.
+local SELECTION_QUIET_SECONDS = 0.5
 
 function Bridge.withUnitSelected(unit, fn)
     if UI.IsCityScreenUp() then
@@ -138,13 +143,16 @@ function Bridge.withUnitSelected(unit, fn)
         error("a menu is open in the game; close it first")
     end
     local previous = UI.GetHeadSelectedUnit()
+    civvaccess_shared.bridgeSelectionQuietUntil = os.clock() + SELECTION_QUIET_SECONDS
     UI.SelectUnit(unit)
     local head = UI.GetHeadSelectedUnit()
     if head == nil or head:GetID() ~= unit:GetID() then
         error("could not select " .. Text.key(GameInfo.Units[unit:GetUnitType()].Description))
     end
     local results = { pcall(fn) }
-    if previous ~= nil and previous:GetID() ~= unit:GetID() and not previous:IsDead() then
+    if previous == nil then
+        UI.ClearSelectionList()
+    elseif previous:GetID() ~= unit:GetID() and not previous:IsDead() then
         UI.SelectUnit(previous)
     end
     if not results[1] then

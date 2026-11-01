@@ -47,8 +47,10 @@ local MAX_RESULT_PLOTS = 25
 -- margin covers a slow frame and multiplayer round trips, and stays well
 -- inside the MCP server's 10-second reply timeout.
 local VERIFY_SECONDS = 4
--- How old an action request may be when the game picks it up.
-local ACTION_TTL_SECONDS = 30
+-- How old an action request may be when the game picks it up. Together
+-- with VERIFY_SECONDS it stays under the server's 10-second timeout, so an
+-- action the server has given up on ("no reply") never runs after all.
+local ACTION_TTL_SECONDS = 5
 
 -- === JSON encoder ===
 -- Encode-only; requests arrive in the flat tab-separated form above, so
@@ -787,6 +789,13 @@ local function actionRefusal(turnArg, playerArg, issuedArg)
     local turn = Game.GetGameTurn()
     if tonumber(turnArg) ~= turn then
         return "request was for turn " .. tostring(turnArg) .. " but it is now turn " .. turn
+    end
+    if os.time == nil then
+        -- Not seen in practice (the game's Lua ships the os library); if it
+        -- ever happens the expiry check is skipped, loudly, rather than
+        -- every action failing without a reply.
+        Log.error("Rpc: os.time missing; action request age not checked")
+        return nil
     end
     local age = os.time() - (tonumber(issuedArg) or 0)
     if age > ACTION_TTL_SECONDS or age < -ACTION_TTL_SECONDS then

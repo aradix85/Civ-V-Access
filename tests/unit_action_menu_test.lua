@@ -157,4 +157,51 @@ function M.test_delete_entry_appends_scrap_gold_only_when_positive()
     assertLacks(speech, "provide")
 end
 
+-- commitWhere (the MCP bridge's commit): a command goes out as DO_COMMAND
+-- with Alt off -- never through HandleAction, which would read a held Alt
+-- key and apply an All-flagged command to every unit of the type -- and a
+-- mission goes out as PUSH_MISSION directly, never through HandleAction's
+-- unit-less confirmation popup. Its confirmation names the build.
+function M.test_bridge_commit_sends_net_messages_with_alt_off()
+    setup({
+        { Type = "COMMAND_UPGRADE", TextKey = "TXT_KEY_COMMAND_DELETE", CommandType = 12, CommandData = -1 },
+        {
+            Type = "BUILD_FARM",
+            TextKey = "TXT_KEY_MISSION_DISCOVER_TECH",
+            CommandType = -1,
+            MissionType = 30,
+            MissionData = 4,
+        },
+    })
+    local sent, handled = {}, 0
+    local savedSend, savedHandle = Game.SelectionListGameNetMessage, Game.HandleAction
+    Game.SelectionListGameNetMessage = function(...)
+        sent[#sent + 1] = { ... }
+    end
+    Game.HandleAction = function()
+        handled = handled + 1
+    end
+    local ok, err = pcall(function()
+        local unit = makeUnit({})
+        local row = UnitActionMenu.commitWhere(unit, function(a)
+            return a.Type == "COMMAND_UPGRADE"
+        end)
+        T.eq(row.Type, "COMMAND_UPGRADE")
+        T.eq(sent[1][1], GameMessageTypes.GAMEMESSAGE_DO_COMMAND)
+        T.eq(sent[1][2], 12)
+        T.eq(sent[1][6], false, "Alt flag off")
+        UnitActionMenu.commitWhere(unit, function(a)
+            return a.Type == "BUILD_FARM"
+        end)
+        T.eq(sent[2][1], GameMessageTypes.GAMEMESSAGE_PUSH_MISSION)
+        T.eq(sent[2][2], 30)
+        T.eq(sent[2][3], 4, "build id as mission data")
+        T.eq(handled, 0, "HandleAction is never used")
+    end)
+    Game.SelectionListGameNetMessage, Game.HandleAction = savedSend, savedHandle
+    if not ok then
+        error(err, 0)
+    end
+end
+
 return M

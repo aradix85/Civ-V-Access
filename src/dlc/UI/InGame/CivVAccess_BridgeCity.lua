@@ -73,6 +73,15 @@ function actions.set_production(cityName, item, mode)
 
     local lengthBefore = city:GetOrderQueueLength()
     local before = countInQueue(city, orderType, row.ID)
+    -- The slot an appended order lands in: the engine moves a non-process
+    -- order in front of the processes that end the queue.
+    local slot = lengthBefore + 1
+    if orderType ~= OrderTypes.ORDER_MAINTAIN then
+        local queue = Bridge.queueOf(city)
+        while slot > 1 and queue[slot - 1].orderType == OrderTypes.ORDER_MAINTAIN do
+            slot = slot - 1
+        end
+    end
     if mode == "append" then
         Game.CityPushOrder(city, orderType, row.ID, false, false, true)
     elseif mode == "first" then
@@ -88,7 +97,7 @@ function actions.set_production(cityName, item, mode)
                 .. ", "
                 .. itemName(row)
                 .. ", "
-                .. Text.format("TXT_KEY_CIVVACCESS_CHOOSEPRODUCTION_ADDED_SLOT", lengthBefore + 1)
+                .. Text.format("TXT_KEY_CIVVACCESS_CHOOSEPRODUCTION_ADDED_SLOT", slot)
         )
     else
         Bridge.speak(

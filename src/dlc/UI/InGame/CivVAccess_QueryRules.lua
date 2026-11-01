@@ -6,7 +6,10 @@
 -- are what comes back, not the base game's: the entry's Help text (its
 -- rules summary), its Strategy text (the game's advice), and the key
 -- numbers a tooltip leads with (cost, strength, moves, maintenance, the
--- tech that unlocks it and the one that obsoletes it). Text goes through
+-- tech that unlocks it and the one that obsoletes it). The numbers are the
+-- database's base values, before game speed, difficulty and other
+-- modifiers; the field names say so. A city's real cost and turns come
+-- from city_details. Text goes through
 -- the mod's markup filter; a text key the database names but never
 -- defines is dropped rather than returned as a raw key.
 
@@ -85,11 +88,11 @@ function queries.explain(name, kindArg)
         name = Text.key(nameKey),
         help = text(row.Help),
         strategy = text(row.Strategy),
-        cost = positive(row.Cost),
-        strength = positive(row.Combat),
-        rangedStrength = positive(row.RangedCombat),
-        moves = positive(row.Moves),
-        maintenance = positive(row.GoldMaintenance),
+        baseCost = positive(row.Cost),
+        baseStrength = positive(row.Combat),
+        baseRangedStrength = positive(row.RangedCombat),
+        baseMoves = positive(row.Moves),
+        baseMaintenance = positive(row.GoldMaintenance),
         unlockedBy = techName(row.PrereqTech or row.TechPrereq),
         obsoleteWith = techName(row.ObsoleteTech),
     }

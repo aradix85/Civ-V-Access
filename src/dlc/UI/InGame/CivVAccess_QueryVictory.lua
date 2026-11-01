@@ -3,12 +3,14 @@
 -- CivVAccess_Rpc so it re-registers on every load-from-game.
 --
 -- The facts the Victory Progress screen shows, per enabled victory type,
--- with the same disclosure: a civilization the player has not met is
--- never named (the screen shows an unmet icon), and its spaceship parts
--- are not listed (the screen only counts how many civs finished Apollo).
+-- with the same disclosure: a civilization the player has not met is never
+-- named ("unmet civilization", as the screen's unmet icon).
 --   time:        turns left before the game ends on score
---   domination:  who holds each original capital
---   science:     Apollo and spaceship parts per met team, Apollo count
+--   domination:  who is credited with each original capital and how many
+--                are needed; credit goes through the EngineData seam (the
+--                holder on vanilla, the master or city-state ally under VP),
+--                the same count the accessible screen speaks
+--   science:     Apollo and spaceship parts per team
 --   diplomatic:  delegates needed and held, United Nations, next session
 --   cultural:    the player's influence on each other civilization as a
 --                percentage of that civ's lifetime culture
@@ -47,29 +49,38 @@ local function majors()
 end
 
 local function domination(me, myTeam)
-    local holderOf = {}
-    for _, i in ipairs(majors()) do
-        for city in Players[i]:Cities() do
-            if city:IsOriginalMajorCapital() then
-                holderOf[city:GetOriginalOwner()] = i
+    local creditedFor, held = {}, {}
+    for i = 0, GameDefines.MAX_CIV_PLAYERS - 1 do
+        local holder = Players[i]
+        if holder ~= nil and holder:IsAlive() then
+            for city in holder:Cities() do
+                if city:IsOriginalMajorCapital() then
+                    local credited = EngineData.dominationController(city)
+                    creditedFor[city:GetOriginalOwner()] = credited
+                    held[credited] = (held[credited] or 0) + 1
+                end
             end
         end
     end
-    local capitals, held = {}, {}
+    local capitals = {}
     for _, i in ipairs(majors()) do
-        local holder = holderOf[i]
         local entry = { civ = civLabel(i, me, myTeam) or "unmet civilization" }
-        if holder == nil then
-            entry.heldBy = "destroyed"
-        elseif holder ~= i then
-            entry.heldBy = civLabel(holder, me, myTeam) or "unmet civilization"
+        local credited = creditedFor[i]
+        if credited ~= nil and credited ~= i then
+            entry.heldBy = civLabel(credited, me, myTeam) or "unmet civilization"
         end
         capitals[#capitals + 1] = entry
-        if holder ~= nil then
-            held[holder] = (held[holder] or 0) + 1
-        end
     end
-    return { capitals = capitals, yourCapitalsHeld = held[me] or 0, capitalsNeeded = #majors() }
+    -- Capitals needed to win: all of them on vanilla; under the Community
+    -- Patch a share of them (VICTORY_DOMINATION_CONTROL_PERCENT, at least
+    -- two), the same rule the accessible Victory Progress screen applies.
+    local total = #majors()
+    local needed = total
+    if Game.IsCustomModOption ~= nil then
+        local pct = GameDefines.VICTORY_DOMINATION_CONTROL_PERCENT or 100
+        needed = math.max(2, math.min(total, math.floor(total * pct / 100)))
+    end
+    return { capitals = capitals, yourCapitalsHeld = held[me] or 0, capitalsNeeded = needed }
 end
 
 local function partsOf(team)
@@ -98,11 +109,14 @@ local function science(me, myTeam)
             if hasApollo then
                 apolloCount = apolloCount + 1
             end
-            local label = civLabel(i, me, myTeam)
-            if label ~= nil then
-                local built, needed = partsOf(team)
-                teams[#teams + 1] = { civ = label, apollo = hasApollo, partsBuilt = built, partsNeeded = needed }
+            local label
+            if teamID == myTeam then
+                label = "you"
+            else
+                label = civLabel(i, me, myTeam) or "unmet civilization"
             end
+            local built, needed = partsOf(team)
+            teams[#teams + 1] = { civ = label, apollo = hasApollo, partsBuilt = built, partsNeeded = needed }
         end
     end
     return { teams = teams, civsWithApollo = apolloCount }

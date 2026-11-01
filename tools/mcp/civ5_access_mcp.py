@@ -850,7 +850,10 @@ TOOLS = [
             "here), upgrade (spends gold), build (needs build, e.g. 'Farm', "
             "'Mine', 'Road'), promote (needs promotion). Attacks are not "
             "offered; they stay with the player. A refusal lists what the "
-            "unit can do now. Selects the unit in game; the game speaks the "
+            "unit can do now. A build over an existing improvement or a city "
+            "on an antiquity site is refused with a question; ask the player "
+            "and repeat with confirm only on their yes. The player's own "
+            "selection and cursor are left as they were; the game speaks the "
             "result."
         ),
         "inputSchema": {
@@ -880,6 +883,14 @@ TOOLS = [
                 "y": _COORD_ARG,
                 "build": {"type": "string", "description": "build only: improvement, route or build name."},
                 "promotion": {"type": "string", "description": "promote only: promotion name."},
+                "confirm": {
+                    "type": "boolean",
+                    "description": (
+                        "build / found only: the player said yes to the question "
+                        "a refusal asked (replacing an improvement, founding on "
+                        "an antiquity site)."
+                    ),
+                },
             },
             "required": ["unit", "action"],
         },
@@ -1192,6 +1203,10 @@ def _action_args(name, arguments, origin):
         if not arguments.get("build"):
             raise geometry.PlaceError("build needs the build name")
         fields.append(arguments["build"])
+        if arguments.get("confirm"):
+            fields.append("confirm")
+    elif action == "found" and arguments.get("confirm"):
+        fields.append("confirm")
     elif action == "promote":
         if not arguments.get("promotion"):
             raise geometry.PlaceError("promote needs the promotion name")
@@ -1271,19 +1286,20 @@ def call_briefing():
     info, err = _game_info()
     if err is not None:
         return err
-    data = {}
+    # One failed query or an unreadable notes file costs its own section,
+    # not the whole briefing; what failed is listed under unavailable.
+    data, unavailable = {}, []
     for key, query, args in BRIEFING_QUERIES:
         envelope = game_query(query, *args)
         if envelope is None:
             return NO_GAME_MESSAGE.format(timeout=RESPONSE_TIMEOUT_SECONDS), True
-        if not envelope.get("ok"):
-            return f"{query} failed: {envelope.get('error')}", True
-        data[key] = envelope["data"]
+        if envelope.get("ok"):
+            data[key] = envelope["data"]
+        else:
+            data[key] = {}
+            unavailable.append(f"{query}: {envelope.get('error')}")
     origin = info.get("coordOrigin")
     empire = data["empire"]
-    game_notes = _notes_for(info)
-    notes_view = game_notes.read()
-    stored = notes_view["notes"]
     result = {
         "turn": info["turn"],
         "empire": {
@@ -1305,17 +1321,25 @@ def call_briefing():
             data["victory"],
             origin,
         ),
-        "notes": {
+    }
+    game_notes = _notes_for(info)
+    try:
+        notes_view = game_notes.read()
+        stored = notes_view["notes"]
+        result["notes"] = {
             "strategy": stored.get("strategy"),
             "standingOrders": stored.get("standingOrders"),
             "openQuestions": stored.get("openQuestions"),
             "recentDecisions": stored.get("decisions", [])[-5:],
             "recentTurnDigests": stored.get("turnDigests", [])[-3:],
-        },
-        "recentActions": game_notes.recent_actions(5),
-    }
-    if "reloadWarning" in notes_view:
-        result["reloadWarning"] = notes_view["reloadWarning"]
+        }
+        result["recentActions"] = game_notes.recent_actions(5)
+        if "reloadWarning" in notes_view:
+            result["reloadWarning"] = notes_view["reloadWarning"]
+    except (OSError, ValueError) as e:
+        unavailable.append(f"game notes: {e}")
+    if unavailable:
+        result["unavailable"] = unavailable
     return json.dumps(result, ensure_ascii=False, indent=2), False
 
 

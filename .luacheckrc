@@ -350,7 +350,7 @@ files["tests/"] = {
         "CityAIFocusTypes", "PolicyBranchTypes", "MajorCivApproachTypes",
         "MinorCivTraitTypes", "GetActiveQuestToolTip",
         -- Engine enums the bridge-actions suite shims in its setup.
-        "TaskTypes", "ActionSubTypes", "CityUpdateTypes", "GameMessageTypes",
+        "TaskTypes", "ActionSubTypes", "CityUpdateTypes",
         -- Engine enum the empire-status suites stub to cover GameOption-
         -- gated branches (NO_SCIENCE / NO_HAPPINESS / NO_RELIGION /
         -- NO_POLICIES). Read-only at top level; suites need write access.

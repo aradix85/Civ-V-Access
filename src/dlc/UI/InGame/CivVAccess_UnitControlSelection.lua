@@ -205,6 +205,14 @@ local function onUnitSelectionChanged(playerID, unitID, _hexI, _hexJ, _hexK, isS
     if top ~= nil and top.name == "CityRangeStrike" then
         return
     end
+    -- Skip while the MCP bridge briefly selects a unit to give it an order
+    -- and then puts the player's own selection back (Bridge.withUnitSelected
+    -- opens this window). Announcing both selections, or jumping the cursor
+    -- to them, would move the player off where they were for a selection
+    -- that is already undone; the order's own confirmation is spoken instead.
+    if os.clock() < (civvaccess_shared.bridgeSelectionQuietUntil or 0) then
+        return
+    end
     -- If target mode is active for a different unit, unwind it. Covers
     -- unit cycling (. / ,), mouse reselect, and actor death flipping
     -- selection to another unit. Same-unit re-selects leave it in place.

@@ -43,6 +43,7 @@ DEPLOYED_FILES = [
     "CivVAccess_QueryRules.lua",
     "CivVAccess_Rpc.lua",
     "CivVAccess_UnitActionMenu.lua",
+    "CivVAccess_UnitControlSelection.lua",
     "CivVAccess_BridgeCore.lua",
     "CivVAccess_BridgeCity.lua",
     "CivVAccess_BridgeTech.lua",

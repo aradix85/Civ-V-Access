@@ -53,20 +53,22 @@ def test_results_are_ordered_most_urgent_first():
     assert "Hungry" in found[0]["text"]
 
 
-def test_rival_capitals_warn_without_naming_more_than_the_screen():
+def test_unmet_capitals_are_not_lumped_into_one_rival():
     victory = {
         "domination": {
             "capitalsNeeded": 4,
-            "capitals": [
-                {"civ": "you"},
-                {"civ": "Greece", "heldBy": "unmet civilization"},
-                {"civ": "unmet civilization"},
-                {"civ": "Persia", "heldBy": "destroyed"},
-            ],
+            "capitals": [{"civ": "you"}, {"civ": "unmet civilization"}, {"civ": "unmet civilization"}, {"civ": "unmet civilization"}],
         }
     }
+    assert w.warnings({}, [], {}, [], victory, None) == [], "turn one is not a domination threat"
+    victory["domination"]["capitals"] = [
+        {"civ": "you"},
+        {"civ": "Greece", "heldBy": "Persia"},
+        {"civ": "Persia"},
+        {"civ": "unmet civilization"},
+    ]
     texts = _texts(w.warnings({}, [], {}, [], victory, None))
-    assert texts == ["unmet civilization holds 2 of 4 original capitals."], texts
+    assert texts == ["Persia holds 2 original capitals; 4 win."], texts
 
 
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

@@ -728,8 +728,11 @@ function M.test_victory_progress_names_only_met_civs()
             })
         end
         Teams[0], Teams[1], Teams[2] = team(false), team(false), team(true)
-        local function capital(originalOwner)
-            return fake({ IsOriginalMajorCapital = true, GetOriginalOwner = originalOwner })
+        local function capital(originalOwner, holder)
+            return fake({ IsOriginalMajorCapital = true, GetOriginalOwner = originalOwner, GetOwner = holder })
+        end
+        EngineData.dominationController = function(city)
+            return city:GetOwner()
         end
         local function major(id, civ, cities)
             return fake({
@@ -742,10 +745,11 @@ function M.test_victory_progress_names_only_met_civs()
             })
         end
         -- Siam (unmet) took Greece's capital.
-        Players[0] = major(0, "Babylon", { capital(0) })
+        Players[0] = major(0, "Babylon", { capital(0, 0) })
         Players[1] = major(1, "Greece", {})
-        Players[2] = major(2, "Siam", { capital(2), capital(1) })
+        Players[2] = major(2, "Siam", { capital(2, 2), capital(1, 2) })
         GameDefines.MAX_MAJOR_CIVS = 3
+        GameDefines.MAX_CIV_PLAYERS = 3
 
         local data = Rpc._queries.victory_progress()
         local greece = data.domination.capitals[2]
@@ -753,8 +757,10 @@ function M.test_victory_progress_names_only_met_civs()
         T.eq(greece.heldBy, "unmet civilization", "the unmet conqueror stays unnamed")
         T.eq(data.domination.capitals[3].civ, "unmet civilization")
         T.eq(data.domination.yourCapitalsHeld, 1)
-        T.eq(#data.science.teams, 2, "an unmet team's spaceship is not listed")
-        T.eq(data.science.civsWithApollo, 1, "but its Apollo counts, as the screen shows")
+        T.eq(data.science.teams[1].civ, "you")
+        T.eq(data.science.teams[3].civ, "unmet civilization", "an unmet team's spaceship is listed unnamed")
+        T.eq(data.science.teams[3].apollo, true)
+        T.eq(data.science.civsWithApollo, 1)
         T.eq(data.time, nil, "a disabled victory type is left out")
     end)
 end
@@ -777,11 +783,11 @@ function M.test_explain_reads_the_loaded_rules_and_drops_undefined_text()
         })
         local data = Rpc._queries.explain("granary")
         T.eq(data.kind, "building")
-        T.eq(data.cost, 65)
+        T.eq(data.baseCost, 65)
         T.eq(data.unlockedBy, "Pottery")
         T.truthy(data.help ~= nil and not data.help:find("[ICON", 1, true), "icon markup filtered")
         T.eq(data.strategy, nil, "an undefined key is not returned as raw text")
-        T.eq(data.strength, nil, "fields a building lacks are omitted")
+        T.eq(data.baseStrength, nil, "fields a building lacks are omitted")
         local ok, err = pcall(Rpc._queries.explain, "granary", "unit")
         T.falsy(ok, "a kind filter that excludes the match fails")
         T.truthy(tostring(err):find("of kind unit", 1, true))

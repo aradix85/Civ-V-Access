@@ -283,9 +283,43 @@ local function commitMove(unit, plot)
     return result
 end
 
+-- The cases where the game itself would stop and ask "are you sure"
+-- (CvGame::handleAction): a build that replaces the improvement already on
+-- the tile, or a city founded on an antiquity site. Returns the question to
+-- put to the player, or nil. Slightly more cautious than the engine, which
+-- also skips the question for some resource combinations.
+local function needsConfirmation(unit, action, build)
+    local plot = unit:GetPlot()
+    if action == "build" then
+        if build.Repair or (build.RouteType ~= nil and build.RouteType ~= "NONE") then
+            return nil
+        end
+        local makes = build.ImprovementType and GameInfo.Improvements[build.ImprovementType]
+        if makes ~= nil and makes.RequiresImprovement then
+            return nil
+        end
+        local existing = plot:GetImprovementType()
+        if existing ~= nil and existing >= 0 then
+            return "this replaces the " .. Text.key(GameInfo.Improvements[existing].Description) .. " on the tile"
+        end
+    elseif action == "found" then
+        local resource = GameInfo.Resources[plot:GetResourceType(Game.GetActiveTeam())]
+        if
+            resource ~= nil and (resource.Type == "RESOURCE_ARTIFACTS" or resource.Type == "RESOURCE_HIDDEN_ARTIFACTS")
+        then
+            return "founding here destroys the antiquity site"
+        end
+    end
+    return nil
+end
+
 -- unit_action <unit id> <action> [<arg> [<arg>]]
 --   move <x> <y>, fortify, sleep, sentry, skip, heal, wake, stop,
---   explore, automate, found, upgrade, build <build>, promote <promotion>
+--   explore, automate, found [confirm], upgrade, build <build> [confirm],
+--   promote <promotion>
+-- "confirm" answers the question the game would otherwise ask (see
+-- needsConfirmation); without it such a command is refused with the
+-- question.
 function actions.unit_action(idArg, action, arg1, arg2)
     local unit = Bridge.ownUnit(idArg)
     local playerID = Game.GetActivePlayer()
@@ -302,6 +336,10 @@ function actions.unit_action(idArg, action, arg1, arg2)
         local build = resolveBuild(arg1)
         matchers = { typeIs(build.Type) }
         wantedLabel = Text.key(build.Description)
+        local question = needsConfirmation(unit, action, build)
+        if question ~= nil and arg2 ~= "confirm" then
+            error("needs the player's confirmation: " .. question)
+        end
     elseif action == "promote" then
         local promo = Rpc.resolveRow("UnitPromotions", "PROMOTION_", arg1)
         if promo == nil then
@@ -315,8 +353,14 @@ function actions.unit_action(idArg, action, arg1, arg2)
     elseif matchers == nil then
         error("unknown unit action: " .. tostring(action))
     end
-    if action == "found" and not Bridge.activePlayer():CanFound(unit:GetX(), unit:GetY()) then
-        error("a city cannot be founded on this tile")
+    if action == "found" then
+        if not Bridge.activePlayer():CanFound(unit:GetX(), unit:GetY()) then
+            error("a city cannot be founded on this tile")
+        end
+        local question = needsConfirmation(unit, action)
+        if question ~= nil and arg1 ~= "confirm" then
+            error("needs the player's confirmation: " .. question)
+        end
     end
 
     local verify = verifyUnitChange(playerID, unit, unitState(unit), check)

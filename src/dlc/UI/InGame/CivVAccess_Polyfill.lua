@@ -473,6 +473,18 @@ DomainTypes = DomainTypes or {
     DOMAIN_HOVER = 3,
 }
 
+-- Net message kinds for Game.SelectionListGameNetMessage /
+-- SelectedCitiesGameNetMessage. Placeholder values; production passes the
+-- engine's own ids straight through.
+GameMessageTypes = GameMessageTypes
+    or {
+        GAMEMESSAGE_PUSH_MISSION = 0,
+        GAMEMESSAGE_DO_COMMAND = 1,
+        GAMEMESSAGE_DO_TASK = 2,
+        GAMEMESSAGE_SWAP_ORDER = 3,
+        GAMEMESSAGE_POP_ORDER = 4,
+    }
+
 -- Combat outcome prediction enum. Populated by Game.GetCombatPrediction and
 -- consumed by UnitSpeech.meleePreview to pick the spoken result label. Values
 -- are placeholders -- production runs against the engine's real ids, and the

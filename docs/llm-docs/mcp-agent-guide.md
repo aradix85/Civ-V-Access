@@ -136,6 +136,14 @@ the options and their trade-offs and leave the decision to the player.
   friendship, denunciations, pacts, agreements, open borders, embassies,
   the mood the game shows) and city-state (trait, personality,
   influence, status, ally, quests).
+- `civ5_briefing` — start here at the beginning of a conversation and of
+  each turn: this game's notes, the empire headline, what blocks the turn,
+  and a warnings checklist ranked urgent / important / info. What already
+  happened is in `civ5_turn_summary`.
+- `civ5_victory_progress` — how close anyone is to winning, per enabled
+  victory type; unmet civilizations stay unnamed.
+- `civ5_explain` — what something does, from this game's own rules text
+  (Vox Populi's where it differs). Numbers are base database values.
 - `civ5_units` — the player's own units with the id the unit action
   takes, tile, moves, health when damaged, current activity, whether it
   waits for orders, promotion ready, and an available upgrade with its
@@ -175,8 +183,13 @@ How they behave, so you can explain it:
   name for city commands, so keep your own confirmation short.
 - No reply at all means the command may still land when the game picks it
   up. Check with a read tool before trying again; never repeat blindly.
-- A unit command selects that unit in game. A production or research
+- A unit command briefly selects that unit and then puts the player's own
+  selection back, without moving their cursor; it is refused while a menu,
+  the city screen or a targeting mode is open. A production or research
   chooser the player has open keeps showing the old choice until closed.
+- A build that replaces an existing improvement, or founding a city on an
+  antiquity site, is refused with the question the game would ask. Put it
+  to the player and repeat with `confirm` only on their yes.
 
 ### Game notes
 

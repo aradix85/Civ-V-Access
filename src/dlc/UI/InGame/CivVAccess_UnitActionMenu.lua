@@ -1264,13 +1264,16 @@ end
 -- nothing matching is available. Used by the MCP bridge, which matches
 -- rows by Type and by build or promotion.
 --
--- Commands (upgrade, promotion, automate, wake, cancel) are sent as the
--- DO_COMMAND net message with the Alt flag off rather than through
--- Game.HandleAction: HandleAction reads the live Alt key into that flag,
--- and Alt on a command flagged All applies it to every unit of the type.
--- A bridge commit happens on a tick unrelated to the keyboard, so a held
--- Alt there would be an accident. Missions go through HandleAction, which
--- reads no modifier for them.
+-- The net message goes out directly, the one Game.HandleAction would send,
+-- rather than through HandleAction itself, for two reasons. Commands
+-- (upgrade, promotion, automate, wake, cancel) carry HandleAction's live
+-- Alt key, and Alt on a command flagged All applies it to every unit of the
+-- type; a bridge commit happens on a tick unrelated to the keyboard, so the
+-- flag is sent off. And for a build over an existing improvement or a city
+-- founded on an artifact, HandleAction opens a confirmation popup that
+-- carries no unit id, so its Yes would act on whatever unit is selected
+-- when the player answers. The bridge asks the player for that
+-- confirmation itself before calling here.
 function UnitActionMenu.commitWhere(unit, matches)
     if unit == nil or GameInfoActions == nil then
         return nil
@@ -1294,7 +1297,15 @@ function UnitActionMenu.commitWhere(unit, matches)
                     false
                 )
             else
-                Game.HandleAction(iAction)
+                Game.SelectionListGameNetMessage(
+                    GameMessageTypes.GAMEMESSAGE_PUSH_MISSION,
+                    action.MissionType,
+                    action.MissionData,
+                    -1,
+                    0,
+                    false,
+                    false
+                )
             end
             local label = actionLabel(action)
             local confirm = selfPlotConfirmText(action, { iAction = iAction, buildName = label, promotionName = label })

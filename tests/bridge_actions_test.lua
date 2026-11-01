@@ -126,7 +126,6 @@ local function withEnv(fn)
         "rpc",
         "Network",
         "CityUpdateTypes",
-        "GameMessageTypes",
         "HandlerStack",
     }) do
         save(_G, name)
@@ -186,7 +185,6 @@ local function withEnv(fn)
     TaskTypes = { TASK_SET_AUTOMATED_PRODUCTION = 9 }
     ActionSubTypes = { ACTIONSUBTYPE_BUILD = 5, ACTIONSUBTYPE_PROMOTION = 6 }
     CityUpdateTypes = { CITY_UPDATE_TYPE_BANNER = 0, CITY_UPDATE_TYPE_PRODUCTION = 1 }
-    GameMessageTypes = { GAMEMESSAGE_PUSH_MISSION = 3, GAMEMESSAGE_DO_COMMAND = 4 }
     HandlerStack = {
         active = function()
             return { name = "Baseline" }
@@ -742,6 +740,37 @@ function M.test_unit_command_waits_while_a_menu_is_open()
         local reply = request("id1\tunit_action\t" .. stamp() .. "\t7\tsleep")
         T.truthy(reply:find("a menu is open", 1, true), reply)
         T.eq(#calls, 0, "nothing selected, nothing sent")
+    end)
+end
+
+function M.test_build_over_an_improvement_waits_for_the_players_yes()
+    withEnv(function()
+        local unit = installUnit({})
+        GameInfo.Builds =
+            infoTable({ { Type = "BUILD_FARM", Description = "Farm", ImprovementType = "IMPROVEMENT_FARM" } })
+        save(GameInfo, "Improvements")
+        GameInfo.Improvements = infoTable({
+            { Type = "IMPROVEMENT_FARM", Description = "Farm" },
+            { Type = "IMPROVEMENT_MINE", Description = "Mine" },
+        })
+        unit.GetPlot = function()
+            return fake({ GetImprovementType = 1 })
+        end
+        local committed = 0
+        UnitActionMenu = {
+            commitWhere = function()
+                committed = committed + 1
+                return { Type = "BUILD_FARM" }
+            end,
+            actionLabel = function(row)
+                return row.Type
+            end,
+        }
+        local reply = request("id1\tunit_action\t" .. stamp() .. "\t7\tbuild\tfarm")
+        T.truthy(reply:find("replaces the Mine", 1, true), reply)
+        T.eq(committed, 0, "nothing built without the player's yes")
+        request("id2\tunit_action\t" .. stamp() .. "\t7\tbuild\tfarm\tconfirm", 2)
+        T.eq(committed, 1, "confirmed, it is built")
     end)
 end
 

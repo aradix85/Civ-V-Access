@@ -20,6 +20,8 @@ HOSTILE_NEAR_CITY = 3  # tiles
 BANKRUPTCY_WARN_TURNS = 15
 SLOW_GROWTH_TURNS = 15
 
+UNMET = "unmet civilization"
+
 # Urgency, highest first; the assistant leads with the first.
 URGENT, IMPORTANT, INFO = "urgent", "important", "info"
 _ORDER = {URGENT: 0, IMPORTANT: 1, INFO: 2}
@@ -88,23 +90,26 @@ def _unit_warnings(units, add):
 def _victory_warnings(victory, add):
     for team in (victory.get("science") or {}).get("teams", []):
         if team.get("civ") != "you" and team.get("apollo"):
+            who = "An unmet civilization" if team["civ"] == UNMET else team["civ"]
             add(
                 URGENT if team.get("partsBuilt") else IMPORTANT,
-                f"{team['civ']} has the Apollo Program "
+                f"{who} has the Apollo Program "
                 f"({team.get('partsBuilt', 0)} of {team.get('partsNeeded')} spaceship parts).",
             )
     if (victory.get("diplomatic") or {}).get("unitedNations"):
         add(IMPORTANT, "The United Nations is active: a diplomatic victory vote is possible.")
+    # Unmet holders all share one label, so they cannot be counted per civ
+    # (the screen cannot tell them apart either); only named ones are.
     domination = victory.get("domination") or {}
     needed = domination.get("capitalsNeeded") or 0
     held = {}
     for cap in domination.get("capitals", []):
         holder = cap.get("heldBy") or cap.get("civ")
-        if holder != "destroyed":
+        if holder not in ("you", UNMET):
             held[holder] = held.get(holder, 0) + 1
     for holder, n in sorted(held.items()):
-        if holder != "you" and needed and n >= max(2, (needed + 1) // 2):
-            add(URGENT, f"{holder} holds {n} of {needed} original capitals.")
+        if needed and n >= 2 and n >= (needed + 1) // 2:
+            add(URGENT, f"{holder} holds {n} original capitals; {needed} win.")
 
 
 def hex_map_from(origin):
