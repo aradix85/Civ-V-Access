@@ -5,6 +5,7 @@ itself. Same tools, same arguments, same replies as the server.
 
     py tools/mcp/civ5_cli.py list                      list the tools
     py tools/mcp/civ5_cli.py guide                     print the agent guide
+    py tools/mcp/civ5_cli.py diagnose                  health check, game running or not
     py tools/mcp/civ5_cli.py <tool> ['<json args>']    call a tool
 
 Example:
@@ -49,6 +50,11 @@ def main(argv):
         return 0
     if argv[1] == "guide":
         print(server.INSTRUCTIONS)
+        return 0
+    if argv[1] == "diagnose":
+        import civ5_diagnose
+
+        print(civ5_diagnose.diagnose())
         return 0
     arguments = json.loads(argv[2]) if len(argv) > 2 else {}
     content, is_error = server.call_tool(argv[1], arguments)
