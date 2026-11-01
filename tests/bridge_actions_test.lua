@@ -841,7 +841,12 @@ function M.test_adopt_policy_sends_the_policy_screen_commit()
             { Type = "POLICY_ARISTOCRACY", Description = "Aristocracy", PolicyBranchType = "POLICY_BRANCH_TRADITION" },
             -- The branch's free starting policy, same name, no branch.
             { Type = "POLICY_TRADITION", Description = "Tradition" },
-            { Type = "POLICY_SPACE_PROCUREMENTS", Description = "Space Procurements", PolicyBranchType = "POLICY_BRANCH_FREEDOM", Level = 3 },
+            {
+                Type = "POLICY_SPACE_PROCUREMENTS",
+                Description = "Space Procurements",
+                PolicyBranchType = "POLICY_BRANCH_FREEDOM",
+                Level = 3,
+            },
             { Type = "POLICY_A", Description = "A", PolicyBranchType = "POLICY_BRANCH_FREEDOM", Level = 3 },
             { Type = "POLICY_B", Description = "B", PolicyBranchType = "POLICY_BRANCH_FREEDOM", Level = 3 },
             { Type = "POLICY_C", Description = "C", PolicyBranchType = "POLICY_BRANCH_FREEDOM", Level = 3 },

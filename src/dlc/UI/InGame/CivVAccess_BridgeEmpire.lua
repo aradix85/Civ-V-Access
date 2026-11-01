@@ -75,7 +75,10 @@ local function adoptPolicy(player, policy)
     Bridge.sent()
     Events.AudioPlay2DSound("AS2D_INTERFACE_POLICY")
     Bridge.speak(
-        Text.format(isTenet and "TXT_KEY_CIVVACCESS_SOCIALPOLICY_ADOPTED_TENET" or "TXT_KEY_CIVVACCESS_SOCIALPOLICY_ADOPTED", label)
+        Text.format(
+            isTenet and "TXT_KEY_CIVVACCESS_SOCIALPOLICY_ADOPTED_TENET" or "TXT_KEY_CIVVACCESS_SOCIALPOLICY_ADOPTED",
+            label
+        )
     )
     local playerID = player:GetID()
     return { policy = label, tenet = isTenet or nil }, function()
