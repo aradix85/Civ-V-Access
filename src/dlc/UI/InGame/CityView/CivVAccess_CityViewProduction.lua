@@ -451,7 +451,7 @@ local function buildProductionQueueItems()
         local automate = BaseMenuItems.Text({
             labelFn = function()
                 local c = UI.GetHeadSelectedCity()
-                local on = (c ~= nil) and c:IsProductionAutomated()
+                local on = (c ~= nil) and EngineData.isProductionAutomated(c)
                 local state = Text.key(on and "TXT_KEY_CIVVACCESS_CHECK_ON" or "TXT_KEY_CIVVACCESS_CHECK_OFF")
                 return Text.format("TXT_KEY_CIVVACCESS_CITYVIEW_PROD_AUTOMATE", state)
             end,
@@ -466,7 +466,7 @@ local function buildProductionQueueItems()
                 if not isTurnActive() then
                     return
                 end
-                local newVal = not c:IsProductionAutomated()
+                local newVal = not EngineData.isProductionAutomated(c)
                 Game.SelectedCitiesGameNetMessage(
                     GameMessageTypes.GAMEMESSAGE_DO_TASK,
                     TaskTypes.TASK_SET_AUTOMATED_PRODUCTION,

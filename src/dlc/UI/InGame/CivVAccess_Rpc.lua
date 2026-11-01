@@ -42,9 +42,13 @@ local SUBSCRIBER_NAME = "Rpc"
 -- find_resource caps its plot list; totals are always reported in full.
 local MAX_RESULT_PLOTS = 25
 -- How long an action's reply waits for its effect to show up in the game
--- state. A single-player net message lands on the next game update; the
--- margin covers a slow frame and multiplayer round trips.
-local VERIFY_FRAMES = 120
+-- state, in wall-clock seconds (tick counts vary with how many Contexts
+-- pump). A single-player net message lands on the next game update; the
+-- margin covers a slow frame and multiplayer round trips, and stays well
+-- inside the MCP server's 10-second reply timeout.
+local VERIFY_SECONDS = 4
+-- How old an action request may be when the game picks it up.
+local ACTION_TTL_SECONDS = 30
 
 -- === JSON encoder ===
 -- Encode-only; requests arrive in the flat tab-separated form above, so
@@ -756,16 +760,24 @@ end
 
 -- The action reply waiting on its verify function, if any. Holding it
 -- here keeps rpc.poll untouched until the reply is out, so requests stay
--- strictly one at a time.
+-- strictly one at a time. Its envelope is mirrored on civvaccess_shared so
+-- a load-from-game, which discards this file's state, can still answer it
+-- (see Rpc.installListeners).
 local pendingAction = nil
 
 local actions = {}
 Rpc._actions = actions
+-- Wall clock for the verify timeout; a seam for the offline suite.
+Rpc._clock = os.clock
 
 -- Why an action may not run right now, or nil. The same gates every
--- write path in the mod applies: the player's own turn, and no net
--- messages being processed (the AI turn holds the game-core lock).
-local function actionRefusal(turnArg)
+-- write path in the mod applies -- the player's own turn, and no net
+-- messages being processed (the AI turn holds the game-core lock) -- plus
+-- the request stamp described in the header.
+local function actionRefusal(turnArg, playerArg, issuedArg)
+    if tonumber(playerArg) ~= Game.GetActivePlayer() then
+        return "request was for another player"
+    end
     if not Players[Game.GetActivePlayer()]:IsTurnActive() then
         return "it is not your turn"
     end
@@ -776,12 +788,17 @@ local function actionRefusal(turnArg)
     if tonumber(turnArg) ~= turn then
         return "request was for turn " .. tostring(turnArg) .. " but it is now turn " .. turn
     end
+    local age = os.time() - (tonumber(issuedArg) or 0)
+    if age > ACTION_TTL_SECONDS or age < -ACTION_TTL_SECONDS then
+        return "request expired before the game picked it up (" .. age .. " seconds old)"
+    end
     return nil
 end
 
 local function finishPending(verified)
     local p = pendingAction
     pendingAction = nil
+    civvaccess_shared.rpcPendingEnvelope = nil
     local data = p.envelope.data
     if verified == nil then
         data.confirmed = false
@@ -805,19 +822,20 @@ local function advancePending()
     end
     if verified ~= nil then
         finishPending(verified)
-    elseif TickPump.frame() - p.startFrame >= VERIFY_FRAMES then
+    elseif Rpc._clock() - p.startClock >= VERIFY_SECONDS then
         finishPending(nil)
     end
 end
 
+-- Fields: id, name, turn, player, issued-at, then the action's own args.
 local function runAction(envelope, name, fields)
-    local refusal = actionRefusal(fields[3])
+    local refusal = actionRefusal(fields[3], fields[4], fields[5])
     if refusal ~= nil then
         envelope.ok = false
         envelope.error = refusal
         return true
     end
-    local okCall, result, verify = pcall(actions[name], unpack(fields, 4))
+    local okCall, result, verify = pcall(actions[name], unpack(fields, 6))
     if not okCall then
         Log.error("Rpc: action '" .. name .. "' failed: " .. tostring(result))
         envelope.ok = false
@@ -829,7 +847,8 @@ local function runAction(envelope, name, fields)
     if verify == nil then
         return true
     end
-    pendingAction = { envelope = envelope, verify = verify, name = name, startFrame = TickPump.frame() }
+    pendingAction = { envelope = envelope, verify = verify, name = name, startClock = Rpc._clock() }
+    civvaccess_shared.rpcPendingEnvelope = envelope
     return false
 end
 
@@ -909,4 +928,15 @@ function Rpc.installListeners()
         return
     end
     TickPump.subscribe(SUBSCRIBER_NAME, Rpc._poll)
+    -- An action reply that was still waiting when a load-from-game wiped
+    -- the previous env: its verify closure is dead, so answer it now with
+    -- what is known instead of leaving the server to time out.
+    local orphan = civvaccess_shared.rpcPendingEnvelope
+    if orphan ~= nil then
+        civvaccess_shared.rpcPendingEnvelope = nil
+        Log.warn("Rpc: answering action " .. tostring(orphan.id) .. " left waiting by a game load")
+        orphan.data.confirmed = false
+        orphan.data.note = "a game was loaded before the result could be checked"
+        respond(orphan)
+    end
 end

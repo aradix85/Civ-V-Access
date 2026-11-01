@@ -71,22 +71,38 @@ function actions.set_research(goal, mode)
         end
     end
 
+    local positionBefore = player:GetQueuePosition(tech.ID)
+    local currentBefore = player:GetCurrentResearch()
     Network.SendResearch(tech.ID, 0, -1, mode == "append")
-    Bridge.speak(Text.format("TXT_KEY_CIVVACCESS_CHOOSETECH_COMMIT", name))
+    if mode == "append" then
+        Bridge.speak(Text.format("TXT_KEY_CIVVACCESS_TECHTREE_QUEUED_COMMIT", name))
+    else
+        Bridge.speak(Text.format("TXT_KEY_CIVVACCESS_CHOOSETECH_COMMIT", name))
+    end
 
     local playerID = Game.GetActivePlayer()
     local result = { tech = name, mode = mode }
     if unlocks ~= nil then
         result.unlocks = unlocks
     end
+    if positionBefore ~= nil and positionBefore >= 0 then
+        -- Re-choosing a goal that is already queued may leave nothing to
+        -- observe; the reply then goes out unconfirmed with this flag.
+        result.wasAlreadyQueued = true
+    end
+    -- Landed means the goal is queued and the research queue visibly moved:
+    -- its position or the current research differs from before the send.
     return result,
         function()
             local p = Players[playerID]
             local position = p:GetQueuePosition(tech.ID)
+            local current = p:GetCurrentResearch()
             if position == nil or position < 0 then
                 return nil
             end
-            local current = p:GetCurrentResearch()
+            if position == positionBefore and current == currentBefore then
+                return nil
+            end
             local currentRow = current ~= nil and GameInfo.Technologies[current] or nil
             return {
                 queuePosition = position,

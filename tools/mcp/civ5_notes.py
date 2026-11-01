@@ -8,8 +8,7 @@ game state the engine stores anywhere. Game FACTS never go in here -- they
 are always read live through the bridge; notes hold intent and history only.
 
 Layout under Documents\\My Games\\Sid Meier's Civilization 5\\CivVAccess\\:
-  notes\\<game key>.json   the notes (source of truth)
-  notes\\<game key>.md     the same notes as plain text for the player to read
+  notes\\<game key>.json            the notes
   notes\\<game key>.actions.jsonl   one line per executed action
 
 The game key comes from setup fields that never change during a game (see
@@ -25,6 +24,7 @@ import datetime
 import json
 import os
 import re
+import time
 
 # Domains a directive can steer; free text inside each.
 DOMAINS = (
@@ -90,7 +90,6 @@ class GameNotes:
         self.key = game_key(info)
         self.info = info
         self.json_path = os.path.join(self.dir, self.key + ".json")
-        self.md_path = os.path.join(self.dir, self.key + ".md")
         self.journal_path = os.path.join(self.dir, self.key + ".actions.jsonl")
 
     # --- storage ---
@@ -107,11 +106,7 @@ class GameNotes:
         tmp = self.json_path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(notes, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, self.json_path)
-        tmp = self.md_path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            f.write(render_text(notes))
-        os.replace(tmp, self.md_path)
+        _replace_with_retry(tmp, self.json_path)
 
     # --- reading ---
 
@@ -212,6 +207,19 @@ class GameNotes:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
+def _replace_with_retry(src, dst, attempts=20):
+    """os.replace, retrying while another program (a sync client, an
+    antivirus scan) briefly holds the destination open."""
+    for attempt in range(attempts):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(0.05)
+
+
 def _need(text, action):
     if not text:
         raise NotesError(f"{action} needs text")
@@ -227,28 +235,3 @@ def _remove_by_id(items, item_id, what):
             del items[i]
             return
     raise NotesError(f"no {what} with id {wanted}")
-
-
-def render_text(notes):
-    """Plain-text rendering for the player to read in an editor; headings
-    and short lines so it reads well with a screen reader."""
-    g = notes.get("game", {})
-    lines = [f"# {g.get('civilization') or 'Game'} notes", ""]
-    lines.append(f"Last updated at turn {notes.get('lastSeenTurn')}.")
-    strat = notes.get("strategy", {})
-    lines += ["", "## Strategy", ""]
-    if strat.get("victoryGoal"):
-        lines.append(f"Victory goal: {strat['victoryGoal']}")
-    if strat.get("summary"):
-        lines.append(strat["summary"])
-    for domain, text in strat.get("directives", {}).items():
-        lines.append(f"- {domain}: {text}")
-    for title, key in (("Standing orders", "standingOrders"), ("Open questions", "openQuestions")):
-        lines += ["", f"## {title}", ""]
-        for item in notes.get(key, []):
-            lines.append(f"- {item['text']} (number {item['id']}, since turn {item.get('since')})")
-    for title, key in (("Decisions", "decisions"), ("Turn digests", "turnDigests")):
-        lines += ["", f"## {title}", ""]
-        for item in notes.get(key, []):
-            lines.append(f"- Turn {item.get('turn')}: {item['text']}")
-    return "\n".join(lines) + "\n"

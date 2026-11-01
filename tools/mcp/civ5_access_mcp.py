@@ -29,6 +29,7 @@ import uuid
 
 import civ5_geometry as geometry
 import civ5_notes as notes
+import civ5_warnings as warnings_mod
 
 PROTOCOL_FALLBACK = "2024-11-05"
 SERVER_INFO = {"name": "civ5-access", "version": "0.3.0"}
@@ -116,13 +117,23 @@ production or research chooser the player has open keeps showing the old
 choice until they close it. Attacks are not offered; they stay with the
 player.
 
-Game notes: call civ5_game_notes at the start of a conversation about the
-game -- the player starts new chats without history, and the notes carry
-their strategy, standing orders, open questions, recent decisions and
-your recent actions. Follow the standing orders in your advice and
-actions. When the player states a decision, a strategy or a standing
-order, record it with civ5_game_notes_update in their own words; notes
-hold intent and history, never game facts, which you always read live.
+Briefing and notes: call civ5_briefing at the start of a conversation
+about the game and when the player starts a new turn -- the player starts
+new chats without history, and the briefing carries this game's notes
+(their strategy, standing orders, open questions, recent decisions, your
+recent actions), what blocks the turn, and a warnings checklist. Lead
+with urgent warnings; mention the rest briefly or when relevant. Follow
+the standing orders in your advice and actions. When the player states a
+decision, a strategy or a standing order, record it with
+civ5_game_notes_update in their own words; notes hold intent and history,
+never game facts, which you always read live. civ5_game_notes returns the
+full notes when you need more than the briefing shows.
+
+Rules questions: civ5_explain answers from this game's own rules text,
+which under Vox Populi often differs from the base game you remember;
+prefer it over memory. civ5_victory_progress shows how close anyone is to
+winning. civ5_diplomacy includes, for each AI, the reasons behind its
+mood with a valence from -4 to +4.
 
 Anchors: every spatial tool accepts an optional "anchor" argument --
 "capital" (default), "cursor" (the player's own map cursor), any known city
@@ -873,6 +884,66 @@ TOOLS = [
             "required": ["unit", "action"],
         },
     },
+    {
+        "name": "civ5_briefing",
+        "description": (
+            "Start here at the beginning of a conversation and at the start "
+            "of each turn. One call: this game's notes (strategy, standing "
+            "orders, open questions, recent decisions, your recent actions), "
+            "the empire headline, what blocks the end of the turn, and a "
+            "warnings checklist ranked urgent / important / info: starving "
+            "or stagnant cities, damaged cities, a treasury running out, "
+            "unhappiness, enemies within 3 tiles of a city, units waiting for "
+            "orders or promotions, and rivals close to winning. What already "
+            "happened is in civ5_turn_summary, not here."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "civ5_victory_progress",
+        "description": (
+            "How close anyone is to winning, per enabled victory type, as "
+            "the Victory Progress screen shows it: turns left, who holds each "
+            "original capital, Apollo and spaceship parts per met civ, "
+            "World Congress delegates needed and held, and your cultural "
+            "influence on each civ. Unmet civilizations stay unnamed."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "civ5_explain",
+        "description": (
+            "What something does, from this game's own rules text (Vox "
+            "Populi's where it differs): help and strategy text plus cost, "
+            "strength, moves, maintenance, the unlocking and obsoleting tech. "
+            "Works for units, buildings, wonders, techs, policies, "
+            "promotions, beliefs, improvements, resources, projects and "
+            "specialists. Prefer it over memory for rules questions."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "unit",
+                        "building",
+                        "tech",
+                        "policy",
+                        "promotion",
+                        "belief",
+                        "improvement",
+                        "resource",
+                        "project",
+                        "specialist",
+                    ],
+                    "description": "Optional, when a name is ambiguous.",
+                },
+            },
+            "required": ["name"],
+        },
+    },
 ]
 
 # Queries the Lua bridge answers in full; the server relays the optional
@@ -884,6 +955,7 @@ PASSTHROUGH_TOOLS = {
     "civ5_turn_summary": ("turn_summary", "messages"),
     "civ5_diplomacy": ("diplomacy", None),
     "civ5_units": ("units", "filter"),
+    "civ5_victory_progress": ("victory_progress", None),
 }
 
 ACTION_TOOLS = {
@@ -1085,6 +1157,16 @@ def _notes_for(envelope):
     return notes.GameNotes(NOTES_DIR, envelope["data"])
 
 
+def _journal(info, tool, arguments, ok, summary):
+    """Best effort: the action already happened (or not) in the game, so a
+    notes file that cannot be written must not turn the reply into an error
+    that invites a retry."""
+    try:
+        _notes_for(info).journal(tool, arguments, ok, summary)
+    except OSError as e:
+        sys.stderr.write(f"civ5-access: could not journal {tool}: {e}\n")
+
+
 def _action_args(name, arguments, origin):
     """Positional request fields for an action, after the turn."""
     if name == "civ5_set_production":
@@ -1130,15 +1212,20 @@ def call_action_tool(name, arguments):
         fields = _action_args(name, arguments, origin)
     except geometry.PlaceError as e:
         return str(e), True
+    for field in fields:
+        text = str(field)
+        if text == "" or any(c in text for c in "\t\r\n"):
+            return f"invalid argument {text!r}: empty or contains a tab or line break", True
     query = name[len("civ5_"):]
-    envelope = game_query(query, info["turn"], *fields)
-    game_notes = _notes_for(info)
+    # The stamp the game checks before acting: this turn, this player, and
+    # when it was sent (a request picked up much later is refused).
+    stamp = (info["turn"], info["activePlayer"], int(time.time()))
+    envelope = game_query(query, *stamp, *fields)
     if envelope is None:
-        game_notes.journal(name, arguments, None, "no reply")
+        _journal(info, name, arguments, None, "no reply")
         return NO_REPLY_TO_ACTION.format(timeout=RESPONSE_TIMEOUT_SECONDS), True
     ok = bool(envelope.get("ok"))
-    summary = envelope.get("data") if ok else envelope.get("error")
-    game_notes.journal(name, arguments, ok, summary)
+    _journal(info, name, arguments, ok, envelope.get("data") if ok else envelope.get("error"))
     envelope.pop("coordOrigin", None)
     envelope = geometry.convert_payload(envelope, origin)
     return json.dumps(envelope, ensure_ascii=False, indent=2), not ok
@@ -1163,6 +1250,72 @@ def call_notes_tool(name, arguments):
             )
     except notes.NotesError as e:
         return str(e), True
+    except OSError as e:
+        return f"could not read or write the game notes: {e}", True
+    return json.dumps(result, ensure_ascii=False, indent=2), False
+
+
+# Queries the briefing gathers; each one's data is needed raw (engine
+# coordinates) for the warnings arithmetic.
+BRIEFING_QUERIES = (
+    ("empire", "empire_overview", ()),
+    ("cities", "city_details", ()),
+    ("hostiles", "list_hostiles", ()),
+    ("units", "units", ()),
+    ("victory", "victory_progress", ()),
+    ("turn", "turn_summary", ("0",)),
+)
+
+
+def call_briefing():
+    info, err = _game_info()
+    if err is not None:
+        return err
+    data = {}
+    for key, query, args in BRIEFING_QUERIES:
+        envelope = game_query(query, *args)
+        if envelope is None:
+            return NO_GAME_MESSAGE.format(timeout=RESPONSE_TIMEOUT_SECONDS), True
+        if not envelope.get("ok"):
+            return f"{query} failed: {envelope.get('error')}", True
+        data[key] = envelope["data"]
+    origin = info.get("coordOrigin")
+    empire = data["empire"]
+    game_notes = _notes_for(info)
+    notes_view = game_notes.read()
+    stored = notes_view["notes"]
+    result = {
+        "turn": info["turn"],
+        "empire": {
+            "civilization": empire.get("civilization"),
+            "era": empire.get("era"),
+            "cities": empire.get("cities"),
+            "gold": empire.get("gold"),
+            "sciencePerTurn": (empire.get("science") or {}).get("perTurn"),
+            "researching": (empire.get("science") or {}).get("researching"),
+            "happiness": empire.get("happiness"),
+            "turnsToNextPolicy": (empire.get("culture") or {}).get("turnsToNextPolicy"),
+        },
+        "waitingOn": data["turn"].get("waitingOn"),
+        "warnings": warnings_mod.warnings(
+            empire,
+            data["cities"].get("cities", []),
+            data["hostiles"],
+            data["units"].get("units", []),
+            data["victory"],
+            origin,
+        ),
+        "notes": {
+            "strategy": stored.get("strategy"),
+            "standingOrders": stored.get("standingOrders"),
+            "openQuestions": stored.get("openQuestions"),
+            "recentDecisions": stored.get("decisions", [])[-5:],
+            "recentTurnDigests": stored.get("turnDigests", [])[-3:],
+        },
+        "recentActions": game_notes.recent_actions(5),
+    }
+    if "reloadWarning" in notes_view:
+        result["reloadWarning"] = notes_view["reloadWarning"]
     return json.dumps(result, ensure_ascii=False, indent=2), False
 
 
@@ -1185,6 +1338,13 @@ def call_tool(name, arguments):
         return call_action_tool(name, arguments)
     elif name in ("civ5_game_notes", "civ5_game_notes_update"):
         return call_notes_tool(name, arguments)
+    elif name == "civ5_briefing":
+        return call_briefing()
+    elif name == "civ5_explain":
+        if arguments.get("kind"):
+            envelope = game_query("explain", arguments["name"], arguments["kind"])
+        else:
+            envelope = game_query("explain", arguments["name"])
     elif name in PASSTHROUGH_TOOLS:
         query, arg_name = PASSTHROUGH_TOOLS[name]
         value = arguments.get(arg_name) if arg_name else None

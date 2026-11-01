@@ -984,6 +984,19 @@ function EngineData.buildingInvested(city, buildingID)
     return false
 end
 
+-- Capability probe and drift read: per-city automated production, where
+-- the game's city AI picks what the city builds (TASK_SET_AUTOMATED_
+-- PRODUCTION). The Community Patch DLL binds City:IsProductionAutomated and
+-- honours the task for a human's city; the stock engine binds neither, so
+-- the vanilla body reports the feature absent and every city unautomated.
+function EngineData.productionAutomationAvailable()
+    return false
+end
+
+function EngineData.isProductionAutomated(city)
+    return false
+end
+
 -- Drift reads: the percent each city adds to the running tech / policy cost,
 -- for the active player. Both cross the seam because the Community Patch DLL
 -- diverges on scale and on meaning. Scale: the CP world data stores these

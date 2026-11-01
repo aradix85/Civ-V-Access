@@ -99,6 +99,12 @@ end
 
 local TURN = 10
 
+-- The stamp every action request carries after its name: turn, active
+-- player, and the second it was issued.
+local function stamp(turn, player, issued)
+    return (turn or TURN) .. "\t" .. (player or 0) .. "\t" .. (issued or os.time())
+end
+
 local function withEnv(fn)
     saved, calls, spoken, sent, pending = {}, {}, {}, {}, nil
     for _, name in ipairs({
@@ -121,6 +127,7 @@ local function withEnv(fn)
         "Network",
         "CityUpdateTypes",
         "GameMessageTypes",
+        "HandlerStack",
     }) do
         save(_G, name)
     end
@@ -140,7 +147,18 @@ local function withEnv(fn)
     for _, k in ipairs({ "SelectUnit", "GetHeadSelectedUnit", "IsCityScreenUp", "GetInterfaceMode" }) do
         save(UI, k)
     end
-    for _, k in ipairs({ "Buildings", "Units", "Projects", "Processes", "Technologies", "Builds", "UnitPromotions" }) do
+    for _, k in ipairs({
+        "Buildings",
+        "Units",
+        "Projects",
+        "Processes",
+        "Technologies",
+        "Builds",
+        "UnitPromotions",
+        "Civilizations",
+        "Civilization_UnitClassOverrides",
+        "Civilization_BuildingClassOverrides",
+    }) do
         save(GameInfo, k)
         GameInfo[k] = infoTable({})
     end
@@ -148,6 +166,10 @@ local function withEnv(fn)
         save(Events, k)
         Events[k] = function() end
     end
+    -- A reply left waiting by an earlier case would be answered as orphaned
+    -- when this case installs the dispatcher.
+    save(civvaccess_shared, "rpcPendingEnvelope")
+    civvaccess_shared.rpcPendingEnvelope = nil
     save(GameInfoTypes, "MISSION_MOVE_TO")
     GameInfoTypes.MISSION_MOVE_TO = 77
     save(GameDefines, "MOVE_DENOMINATOR")
@@ -164,7 +186,12 @@ local function withEnv(fn)
     TaskTypes = { TASK_SET_AUTOMATED_PRODUCTION = 9 }
     ActionSubTypes = { ACTIONSUBTYPE_BUILD = 5, ACTIONSUBTYPE_PROMOTION = 6 }
     CityUpdateTypes = { CITY_UPDATE_TYPE_BANNER = 0, CITY_UPDATE_TYPE_PRODUCTION = 1 }
-    GameMessageTypes = { GAMEMESSAGE_PUSH_MISSION = 3 }
+    GameMessageTypes = { GAMEMESSAGE_PUSH_MISSION = 3, GAMEMESSAGE_DO_COMMAND = 4 }
+    HandlerStack = {
+        active = function()
+            return { name = "Baseline" }
+        end,
+    }
     Game.GetActivePlayer = function()
         return 0
     end
@@ -203,6 +230,12 @@ local function withEnv(fn)
         end,
         computePath = function()
             return {}, true, 2
+        end,
+        productionAutomationAvailable = function()
+            return true
+        end,
+        isProductionAutomated = function(city)
+            return city:IsProductionAutomated()
         end,
     }
     rpc = {
@@ -250,7 +283,8 @@ local function request(line, maxFrames)
 end
 
 local function activePlayer(extra)
-    local methods = { IsTurnActive = true, GetTeam = 0 }
+    GameInfo.Civilizations = infoTable({ { Type = "CIVILIZATION_BABYLON" } })
+    local methods = { IsTurnActive = true, GetTeam = 0, GetCivilizationType = 0 }
     for k, v in pairs(extra or {}) do
         methods[k] = v
     end
@@ -268,7 +302,7 @@ function M.test_action_for_another_turn_is_refused_without_running()
             ran = true
             return {}
         end
-        local reply = request("id1\tprobe\t9")
+        local reply = request("id1\tprobe\t" .. stamp(9))
         T.truthy(reply:find('"ok":false', 1, true), reply)
         T.truthy(reply:find("turn 9", 1, true), "names the stale turn")
         T.falsy(ran, "a stale request must not act")
@@ -283,7 +317,7 @@ function M.test_action_outside_own_turn_is_refused()
             ran = true
             return {}
         end
-        local reply = request("id1\tprobe\t" .. TURN)
+        local reply = request("id1\tprobe\t" .. stamp())
         T.truthy(reply:find("not your turn", 1, true), reply)
         T.falsy(ran)
     end)
@@ -301,7 +335,7 @@ function M.test_reply_waits_for_verify_then_reports_confirmed()
                 return nil
             end
         end
-        pending = "id1\tprobe\t" .. TURN .. "\tx"
+        pending = "id1\tprobe\t" .. stamp() .. "\tx"
         TickPump.tick()
         TickPump.tick()
         T.eq(#sent, 0, "no reply before the effect is visible")
@@ -325,7 +359,12 @@ function M.test_unverified_action_replies_unconfirmed_after_timeout()
                 return nil
             end
         end
-        local reply = request("id1\tprobe\t" .. TURN, 400)
+        local now = 0
+        Rpc._clock = function()
+            now = now + 0.1
+            return now
+        end
+        local reply = request("id1\tprobe\t" .. stamp(), 400)
         T.truthy(reply ~= nil, "a reply goes out even when the effect never shows")
         T.truthy(reply:find('"confirmed":false', 1, true), reply)
     end)
@@ -376,7 +415,7 @@ function M.test_set_production_replace_sends_the_choosers_commit()
             calls[#calls + 1] = { "CityPushOrder", orderType, id, bSave, bPop, bAppend }
             queue[1] = { orderType, id }
         end
-        local reply = request("id1\tset_production\t" .. TURN .. "\tbabylon\tgranary")
+        local reply = request("id1\tset_production\t" .. stamp() .. "\tbabylon\tgranary")
         T.eq(#calls, 1)
         local c = calls[1]
         T.eq(c[2], OrderTypes.ORDER_CONSTRUCT)
@@ -392,7 +431,7 @@ function M.test_set_production_refuses_what_the_city_cannot_build()
     withEnv(function()
         GameInfo.Buildings = infoTable({ { Type = "BUILDING_GRANARY", Description = "Granary" } })
         installCity({ canBuild = false })
-        local reply = request("id1\tset_production\t" .. TURN .. "\tBabylon\tGranary")
+        local reply = request("id1\tset_production\t" .. stamp() .. "\tBabylon\tGranary")
         T.truthy(reply:find("cannot build Granary", 1, true), reply)
         T.eq(#calls, 0, "nothing is issued after a failed check")
         T.eq(#spoken, 0)
@@ -403,7 +442,7 @@ function M.test_append_to_a_full_queue_is_refused()
     withEnv(function()
         GameInfo.Buildings = infoTable({ { Type = "BUILDING_GRANARY", Description = "Granary" } })
         installCity({ queue = { { 1, 0 }, { 1, 0 }, { 1, 0 }, { 1, 0 }, { 1, 0 }, { 1, 0 } } })
-        local reply = request("id1\tset_production\t" .. TURN .. "\tBabylon\tGranary\tappend")
+        local reply = request("id1\tset_production\t" .. stamp() .. "\tBabylon\tGranary\tappend")
         T.truthy(reply:find("queue is full", 1, true), reply)
         T.eq(#calls, 0)
     end)
@@ -423,7 +462,7 @@ function M.test_faith_purchase_uses_faith_and_confirms_on_spend()
             calls[#calls + 1] = { "CityPurchaseUnit", id, yield }
             faith = 120
         end
-        local reply = request("id1\tpurchase\t" .. TURN .. "\tBabylon\tmissionary\tfaith")
+        local reply = request("id1\tpurchase\t" .. stamp() .. "\tBabylon\tmissionary\tfaith")
         T.eq(calls[1][1], "CityPurchaseUnit")
         T.eq(calls[1][3], YieldTypes.YIELD_FAITH)
         T.truthy(reply:find('"faithLeft":120', 1, true), reply)
@@ -442,7 +481,7 @@ function M.test_city_automation_sends_the_city_screen_task()
             calls[#calls + 1] = { "SendDoTask", ... }
             on = true
         end
-        local reply = request("id1\tcity_automation\t" .. TURN .. "\tBabylon\ton")
+        local reply = request("id1\tcity_automation\t" .. stamp() .. "\tBabylon\ton")
         local c = calls[1]
         T.eq(c[2], 1, "city id")
         T.eq(c[3], TaskTypes.TASK_SET_AUTOMATED_PRODUCTION)
@@ -460,8 +499,20 @@ function M.test_research_goal_named_by_its_unlock_resolves_to_the_tech()
         GameInfo.Buildings =
             infoTable({ { Type = "BUILDING_LIBRARY", Description = "Library", PrereqTech = "TECH_WRITING" } })
         Teams[0] = fake({ IsHasTech = false })
-        activePlayer({ CanEverResearch = true, GetQueuePosition = 1, GetCurrentResearch = 0, GetResearchTurnsLeft = 6 })
-        local reply = request("id1\tset_research\t" .. TURN .. "\tlibrary\tappend")
+        local queued = false
+        activePlayer({
+            CanEverResearch = true,
+            GetQueuePosition = function()
+                return queued and 2 or -1
+            end,
+            GetCurrentResearch = 0,
+            GetResearchTurnsLeft = 6,
+        })
+        Network.SendResearch = function(...)
+            calls[#calls + 1] = { "SendResearch", ... }
+            queued = true
+        end
+        local reply = request("id1\tset_research\t" .. stamp() .. "\tlibrary\tappend")
         T.eq(calls[1][1], "SendResearch")
         T.eq(calls[1][2], 0, "tech id of Writing")
         T.eq(calls[1][3], 0, "not a free tech")
@@ -476,7 +527,7 @@ function M.test_research_of_a_known_tech_is_refused()
         GameInfo.Technologies = infoTable({ { Type = "TECH_WRITING", Description = "Writing" } })
         Teams[0] = fake({ IsHasTech = true })
         activePlayer({ CanEverResearch = true })
-        local reply = request("id1\tset_research\t" .. TURN .. "\tWriting")
+        local reply = request("id1\tset_research\t" .. stamp() .. "\tWriting")
         T.truthy(reply:find("already know Writing", 1, true), reply)
         T.eq(#calls, 0)
     end)
@@ -504,6 +555,8 @@ local function installUnit(opts)
         GetBaseRangedCombatStrength = 0,
         CanUpgradeRightNow = false,
         GetBuildType = -1,
+        GetActivityType = 0,
+        GetUpgradeUnitType = -1,
         GetPlot = "plot",
     })
     GameInfo.Units = infoTable({ { Type = "UNIT_WARRIOR", Description = "Warrior" } })
@@ -545,7 +598,7 @@ end
 function M.test_unknown_unit_action_fails_before_selecting()
     withEnv(function()
         installUnit({})
-        local reply = request("id1\tunit_action\t" .. TURN .. "\t7\tdance")
+        local reply = request("id1\tunit_action\t" .. stamp() .. "\t7\tdance")
         T.truthy(reply:find("unknown unit action", 1, true), reply)
         T.eq(#calls, 0, "the player's selection is left alone")
     end)
@@ -566,7 +619,7 @@ function M.test_move_onto_an_enemy_is_left_to_the_player()
                 return nil
             end,
         }
-        local reply = request("id1\tunit_action\t" .. TURN .. "\t7\tmove\t6\t5")
+        local reply = request("id1\tunit_action\t" .. stamp() .. "\t7\tmove\t6\t5")
         T.truthy(reply:find("attacks stay with the player", 1, true), reply)
         for _, c in ipairs(calls) do
             T.truthy(c[1] ~= "SelectionListGameNetMessage", "no move was pushed")
@@ -579,7 +632,7 @@ function M.test_move_pushes_move_to_and_registers_the_announcement()
         installUnit({})
         save(Map, "GetPlot")
         Map.GetPlot = function()
-            return fake({ IsRevealed = true })
+            return fake({ IsRevealed = true, GetX = 6, GetY = 4 })
         end
         UnitControl = {
             enemyAt = function()
@@ -595,7 +648,7 @@ function M.test_move_pushes_move_to_and_registers_the_announcement()
                 return { ok = "strict" }
             end,
         }
-        request("id1\tunit_action\t" .. TURN .. "\t7\tmove\t6\t4", 3)
+        request("id1\tunit_action\t" .. stamp() .. "\t7\tmove\t6\t4", 3)
         local names = {}
         for _, c in ipairs(calls) do
             names[#names + 1] = c[1]
@@ -632,7 +685,7 @@ function M.test_fortify_falls_back_to_sleep_and_lists_options_on_failure()
                 return { { type = "MISSION_SKIP", label = "Skip Turn" } }
             end,
         }
-        local reply = request("id1\tunit_action\t" .. TURN .. "\t7\tfortify", 2)
+        local reply = request("id1\tunit_action\t" .. stamp() .. "\t7\tfortify", 2)
         T.eq(committedTypes[1], "MISSION_SLEEP", "a unit that cannot fortify sleeps")
         T.eq(reply, nil, "the reply waits for the unit's state to change")
 
@@ -644,8 +697,51 @@ function M.test_fortify_falls_back_to_sleep_and_lists_options_on_failure()
         dofile("src/dlc/UI/InGame/CivVAccess_Rpc.lua")
         dofile("src/dlc/UI/InGame/CivVAccess_BridgeUnit.lua")
         Rpc.installListeners()
-        reply = request("id2\tunit_action\t" .. TURN .. "\t7\theal")
+        reply = request("id2\tunit_action\t" .. stamp() .. "\t7\theal")
         T.truthy(reply:find("available: Skip Turn", 1, true), reply)
+    end)
+end
+
+function M.test_unit_command_puts_the_players_selection_back()
+    withEnv(function()
+        local unit = installUnit({})
+        local theirs = fake({ GetID = 3, IsDead = false })
+        local head = theirs
+        UI.SelectUnit = function(u)
+            calls[#calls + 1] = { "SelectUnit", u:GetID() }
+            head = u
+        end
+        UI.GetHeadSelectedUnit = function()
+            return head
+        end
+        UnitActionMenu = {
+            commitWhere = function(u, matches)
+                T.eq(head, u, "the command goes out while our unit is selected")
+                if matches({ Type = "MISSION_SLEEP" }) then
+                    return { Type = "MISSION_SLEEP" }
+                end
+                return nil
+            end,
+            actionLabel = function(row)
+                return row.Type
+            end,
+        }
+        request("id1\tunit_action\t" .. stamp() .. "\t7\tsleep", 2)
+        T.eq(calls[1][2], unit:GetID())
+        T.eq(calls[2][2], 3, "the player's own unit is selected again")
+        T.eq(head, theirs)
+    end)
+end
+
+function M.test_unit_command_waits_while_a_menu_is_open()
+    withEnv(function()
+        installUnit({})
+        HandlerStack.active = function()
+            return { name = "UnitActionMenu" }
+        end
+        local reply = request("id1\tunit_action\t" .. stamp() .. "\t7\tsleep")
+        T.truthy(reply:find("a menu is open", 1, true), reply)
+        T.eq(#calls, 0, "nothing selected, nothing sent")
     end)
 end
 

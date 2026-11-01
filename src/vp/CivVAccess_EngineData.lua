@@ -1266,6 +1266,18 @@ function EngineData.buildingInvested(city, buildingID)
     return city:GetBuildingInvestment(buildingID) > 0
 end
 
+-- Capability probe and drift read: per-city automated production. The
+-- Community Patch DLL binds City:IsProductionAutomated and has the city AI
+-- choose for a human's city while it is set, under CP and VP alike. See the
+-- vanilla file for the contract.
+function EngineData.productionAutomationAvailable()
+    return true
+end
+
+function EngineData.isProductionAutomated(city)
+    return city:IsProductionAutomated()
+end
+
 -- Drift reads: the percent each city adds to the running tech / policy cost.
 -- The bindings already divide the times-100 world data and already fold in the
 -- active player's per-city tech modifier / policy-cost discount, so the value

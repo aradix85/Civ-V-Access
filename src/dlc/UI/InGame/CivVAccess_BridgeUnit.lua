@@ -171,12 +171,17 @@ local function availableLabels(unit)
 end
 
 -- A snapshot of what a unit command can change, for the verify step.
+-- Activity and readiness catch the commands that move nothing (skip
+-- turns a waiting unit into a holding one; sentry and sleep change the
+-- activity before any status word does).
 local function unitState(unit)
     return {
         x = unit:GetX(),
         y = unit:GetY(),
         moves = unit:MovesLeft(),
         status = UnitSpeech.statusToken(unit),
+        activity = unit:GetActivityType(),
+        ready = unit:IsReadyToMove(),
         build = unit:GetBuildType(),
         queued = #EngineData.missionQueue(unit),
     }
@@ -191,31 +196,43 @@ local function changed(a, b)
     return false
 end
 
-local function verifyUnitChange(playerID, unitID, plotX, plotY, before)
+-- Verify for a unit command. A unit that is gone founded a city, was
+-- upgraded (the replacement of the upgrade type stands on its tile) or was
+-- consumed; one that is still there must show a change from `before`, or
+-- pass `check` when the command has a precise test (a promotion).
+local function verifyUnitChange(playerID, unit, before, check)
+    local unitID, plotX, plotY = unit:GetID(), unit:GetX(), unit:GetY()
+    local upgradeType = unit:GetUpgradeUnitType()
     return function()
-        local unit = Players[playerID]:GetUnitByID(unitID)
-        if unit == nil or unit:IsDead() then
+        local u = Players[playerID]:GetUnitByID(unitID)
+        if u == nil or u:IsDead() then
             local plot = Map.GetPlot(plotX, plotY)
-            if plot:IsCity() then
+            if plot:IsCity() and plot:GetPlotCity():GetOwner() == playerID then
                 return { foundedCity = plot:GetPlotCity():GetName() }
             end
             for i = 0, plot:GetNumUnits() - 1 do
-                local u = plot:GetUnit(i)
-                if u:GetOwner() == playerID then
-                    return { replacedBy = unitTypeName(u), newUnitId = u:GetID() }
+                local other = plot:GetUnit(i)
+                if other:GetOwner() == playerID and other:GetUnitType() == upgradeType then
+                    return { replacedBy = unitTypeName(other), newUnitId = other:GetID() }
                 end
             end
             return { unitGone = true }
         end
-        local now = unitState(unit)
-        if not changed(before, now) then
+        local now = unitState(u)
+        if check ~= nil then
+            if not check(u) then
+                return nil
+            end
+        elseif not changed(before, now) then
             return nil
         end
         return { x = now.x, y = now.y, movesLeft = movesOf(now.moves), status = now.status, queuedMissions = now.queued }
     end
 end
 
-local function moveUnit(unit, xs, ys)
+-- Every check a move needs, before anything is selected or sent. Returns
+-- the target plot.
+local function moveTarget(unit, xs, ys)
     local x, y = tonumber(xs), tonumber(ys)
     if x == nil or y == nil then
         error("move needs numeric x and y")
@@ -241,6 +258,11 @@ local function moveUnit(unit, xs, ys)
         end
         error(reason)
     end
+    return plot
+end
+
+local function commitMove(unit, plot)
+    local x, y = plot:GetX(), plot:GetY()
     -- Priced before the push: once the mission runs the unit is no longer
     -- at its start tile.
     local _nodes, ok, turns = EngineData.computePath(unit, unit:GetPlot(), plot)
@@ -266,10 +288,17 @@ end
 --   explore, automate, found, upgrade, build <build>, promote <promotion>
 function actions.unit_action(idArg, action, arg1, arg2)
     local unit = Bridge.ownUnit(idArg)
+    local playerID = Game.GetActivePlayer()
 
+    -- Resolve and check everything that needs no selection first, so a
+    -- refusal leaves the player's selection alone.
     local matchers = SIMPLE[action]
     local wantedLabel = action
-    if action == "build" then
+    local check
+    local target
+    if action == "move" then
+        target = moveTarget(unit, arg1, arg2)
+    elseif action == "build" then
         local build = resolveBuild(arg1)
         matchers = { typeIs(build.Type) }
         wantedLabel = Text.key(build.Description)
@@ -280,38 +309,45 @@ function actions.unit_action(idArg, action, arg1, arg2)
         end
         matchers = { typeIs(promo.Type) }
         wantedLabel = Text.key(promo.Description)
-    elseif matchers == nil and action ~= "move" then
+        check = function(u)
+            return u:IsHasPromotion(promo.ID)
+        end
+    elseif matchers == nil then
         error("unknown unit action: " .. tostring(action))
     end
     if action == "found" and not Bridge.activePlayer():CanFound(unit:GetX(), unit:GetY()) then
         error("a city cannot be founded on this tile")
     end
 
-    Bridge.selectUnit(unit)
-    local before = unitState(unit)
-    local verify = verifyUnitChange(Game.GetActivePlayer(), unit:GetID(), unit:GetX(), unit:GetY(), before)
-
-    if action == "move" then
-        return moveUnit(unit, arg1, arg2), verify
+    local verify = verifyUnitChange(playerID, unit, unitState(unit), check)
+    if target ~= nil then
+        return Bridge.withUnitSelected(unit, function()
+            return commitMove(unit, target)
+        end), verify
     end
-    for _, matches in ipairs(matchers) do
-        local committed = UnitActionMenu.commitWhere(unit, matches)
-        if committed ~= nil then
-            return {
-                unit = unitTypeName(unit),
-                id = unit:GetID(),
-                action = action,
-                did = UnitActionMenu.actionLabel(committed),
-            },
-                verify
+    local committed, labels = Bridge.withUnitSelected(unit, function()
+        for _, matches in ipairs(matchers) do
+            local row = UnitActionMenu.commitWhere(unit, matches)
+            if row ~= nil then
+                return row
+            end
         end
+        return nil, availableLabels(unit)
+    end)
+    if committed == nil then
+        error(
+            unitTypeName(unit)
+                .. " cannot do "
+                .. wantedLabel
+                .. " now; available: "
+                .. (#labels > 0 and table.concat(labels, ", ") or "nothing")
+        )
     end
-    local labels = availableLabels(unit)
-    error(
-        unitTypeName(unit)
-            .. " cannot do "
-            .. wantedLabel
-            .. " now; available: "
-            .. (#labels > 0 and table.concat(labels, ", ") or "nothing")
-    )
+    return {
+        unit = unitTypeName(unit),
+        id = unit:GetID(),
+        action = action,
+        did = UnitActionMenu.actionLabel(committed),
+    },
+        verify
 end

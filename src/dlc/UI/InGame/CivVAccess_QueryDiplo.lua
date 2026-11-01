@@ -7,7 +7,11 @@
 -- pact, research agreement, open borders both ways, embassies both ways,
 -- score, era, city count, and for an AI not at war the mood the game
 -- shows (GetApproachTowardsUsGuess, the player-side guess the base UI and
--- the F4 relationships screen read -- never the AI's hidden approach).
+-- the F4 relationships screen read -- never the AI's hidden approach),
+-- with the reasons behind it: the opinion lines the leader tooltip and
+-- the F4 screen list (GetOpinionTable), each with its valence from -4
+-- (strongest grievance) to +4 (strongest bonus), read off the colour tier
+-- the engine wraps it in -- the only valence signal Lua gets.
 -- City-states: trait, personality, influence, friend / ally status, who
 -- their ally is (unnamed when unmet, as the game shows it), war, the
 -- active quests text, and their capital's tile when revealed. Unmet
@@ -51,6 +55,27 @@ local function traitName(trait)
     return nil
 end
 
+local OPINION_VALENCE = {
+    COLOR_INTENSE_POSITIVE_TEXT = 4,
+    COLOR_POSITIVE_TEXT = 3,
+    COLOR_MODERATE_POSITIVE_TEXT = 2,
+    COLOR_FADING_POSITIVE_TEXT = 1,
+    COLOR_GREY = 0,
+    COLOR_FADING_NEGATIVE_TEXT = -1,
+    COLOR_MODERATE_NEGATIVE_TEXT = -2,
+    COLOR_NEGATIVE_TEXT = -3,
+    COLOR_INTENSE_NEGATIVE_TEXT = -4,
+}
+
+local function opinionsOf(other, me)
+    local out = {}
+    for _, line in ipairs(other:GetOpinionTable(me) or {}) do
+        local color = line:match("^%[(COLOR_[A-Z_]+)%]")
+        out[#out + 1] = { valence = OPINION_VALENCE[color] or 0, text = TextFilter.filter(line) }
+    end
+    return out
+end
+
 local function majorEntry(me, player, myTeamId, i)
     local other = Players[i]
     local otherTeamId = other:GetTeam()
@@ -76,6 +101,7 @@ local function majorEntry(me, player, myTeamId, i)
     }
     if not entry.atWar and not entry.teammate and not entry.human then
         entry.mood = moodName(player:GetApproachTowardsUsGuess(i))
+        entry.opinions = opinionsOf(other, me)
     end
     return entry
 end

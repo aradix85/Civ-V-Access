@@ -956,8 +956,9 @@ local function isVisibleForBuild(unit, iAction, action)
     return true
 end
 
-local function commitSelfPlot(action, payload)
-    Game.HandleAction(payload.iAction)
+-- The confirmation a self-plot commit speaks: the action's token through
+-- UnitSpeech.selfPlotConfirm, falling back to the action's own label.
+local function selfPlotConfirmText(action, payload)
     local token = SELF_PLOT_TOKENS_BY_TYPE[action.Type]
     if isPromotionAction(action) then
         token = "PROMOTION"
@@ -971,6 +972,12 @@ local function commitSelfPlot(action, payload)
     if confirm == nil or confirm == "" then
         confirm = actionLabel(action)
     end
+    return confirm
+end
+
+local function commitSelfPlot(action, payload)
+    Game.HandleAction(payload.iAction)
+    local confirm = selfPlotConfirmText(action, payload)
     if confirm ~= "" then
         SpeechPipeline.speakInterrupt(confirm)
     end
@@ -1250,11 +1257,20 @@ function UnitActionMenu.commitByType(unit, types)
 end
 
 -- Commit the first available action row `matches(action)` accepts, at the
--- unit's plot, through the same isAvailable / commitSelfPlot path as the
--- Tab menu (so the confirmation speaks the same). Targeted actions are
--- skipped: they need a target picked in the mod's target mode. Returns the
--- committed row, or nil when nothing matching is available. Used by the
--- MCP bridge, which matches rows by Type and by build or promotion.
+-- unit's plot, behind the same isAvailable gate as the Tab menu and with
+-- the same confirmation (queued rather than interrupting, since the
+-- player did not press a key). Targeted actions and actions that open a
+-- confirmation popup are skipped. Returns the committed row, or nil when
+-- nothing matching is available. Used by the MCP bridge, which matches
+-- rows by Type and by build or promotion.
+--
+-- Commands (upgrade, promotion, automate, wake, cancel) are sent as the
+-- DO_COMMAND net message with the Alt flag off rather than through
+-- Game.HandleAction: HandleAction reads the live Alt key into that flag,
+-- and Alt on a command flagged All applies it to every unit of the type.
+-- A bridge commit happens on a tick unrelated to the keyboard, so a held
+-- Alt there would be an accident. Missions go through HandleAction, which
+-- reads no modifier for them.
 function UnitActionMenu.commitWhere(unit, matches)
     if unit == nil or GameInfoActions == nil then
         return nil
@@ -1265,9 +1281,26 @@ function UnitActionMenu.commitWhere(unit, matches)
             action ~= nil
             and matches(action)
             and not isTargetedAction(action.Type)
+            and not action.ConfirmCommand
             and isAvailable(unit, iAction, action)
         then
-            commitSelfPlot(action, { iAction = iAction })
+            if action.CommandType ~= nil and action.CommandType >= 0 then
+                Game.SelectionListGameNetMessage(
+                    GameMessageTypes.GAMEMESSAGE_DO_COMMAND,
+                    action.CommandType,
+                    action.CommandData,
+                    -1,
+                    0,
+                    false
+                )
+            else
+                Game.HandleAction(iAction)
+            end
+            local label = actionLabel(action)
+            local confirm = selfPlotConfirmText(action, { iAction = iAction, buildName = label, promotionName = label })
+            if confirm ~= "" then
+                SpeechPipeline.speakQueued(confirm)
+            end
             return action
         end
     end

@@ -39,6 +39,8 @@ DEPLOYED_FILES = [
     "CivVAccess_QueryTurn.lua",
     "CivVAccess_QueryDiplo.lua",
     "CivVAccess_QueryGame.lua",
+    "CivVAccess_QueryVictory.lua",
+    "CivVAccess_QueryRules.lua",
     "CivVAccess_Rpc.lua",
     "CivVAccess_UnitActionMenu.lua",
     "CivVAccess_BridgeCore.lua",

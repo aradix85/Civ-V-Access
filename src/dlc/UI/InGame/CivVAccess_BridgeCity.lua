@@ -71,6 +71,7 @@ function actions.set_production(cityName, item, mode)
         error(city:GetName() .. "'s production queue is full")
     end
 
+    local lengthBefore = city:GetOrderQueueLength()
     local before = countInQueue(city, orderType, row.ID)
     if mode == "append" then
         Game.CityPushOrder(city, orderType, row.ID, false, false, true)
@@ -81,19 +82,35 @@ function actions.set_production(cityName, item, mode)
     end
     Events.SpecificCityInfoDirty(city:GetOwner(), city:GetID(), CityUpdateTypes.CITY_UPDATE_TYPE_BANNER)
     Events.SpecificCityInfoDirty(city:GetOwner(), city:GetID(), CityUpdateTypes.CITY_UPDATE_TYPE_PRODUCTION)
-    Bridge.speak(city:GetName() .. ", " .. Text.format("TXT_KEY_CIVVACCESS_CHOOSEPRODUCTION_BUILDING", itemName(row)))
+    if mode == "append" and lengthBefore > 0 then
+        Bridge.speak(
+            city:GetName()
+                .. ", "
+                .. itemName(row)
+                .. ", "
+                .. Text.format("TXT_KEY_CIVVACCESS_CHOOSEPRODUCTION_ADDED_SLOT", lengthBefore + 1)
+        )
+    else
+        Bridge.speak(
+            city:GetName() .. ", " .. Text.format("TXT_KEY_CIVVACCESS_CHOOSEPRODUCTION_BUILDING", itemName(row))
+        )
+    end
 
+    -- Landed means the queue now shows the order: one more copy of it than
+    -- before (append, first), or it is the whole queue (replace, which
+    -- clears everything else). A tick that still shows the old queue keeps
+    -- the reply waiting.
     local ownerID, cityID = city:GetOwner(), city:GetID()
     local result = { city = city:GetName(), item = itemName(row), kind = kind, mode = mode }
     return result,
         function()
             local c = Players[ownerID]:GetCityByID(cityID)
             local landed
-            if mode == "append" then
-                landed = countInQueue(c, orderType, row.ID) > before
-            else
+            if mode == "replace" then
                 local headType, headId = c:GetOrderFromQueue(0)
-                landed = headType == orderType and headId == row.ID
+                landed = c:GetOrderQueueLength() == 1 and headType == orderType and headId == row.ID
+            else
+                landed = countInQueue(c, orderType, row.ID) > before
             end
             if not landed then
                 return nil
@@ -195,7 +212,7 @@ function actions.city_automation(cityName, state)
         error("state must be on or off")
     end
     local city = Bridge.ownCity(cityName)
-    if city.IsProductionAutomated == nil then
+    if not EngineData.productionAutomationAvailable() then
         error("automated production is not available in this game")
     end
     refusePuppet(city)
@@ -207,7 +224,7 @@ function actions.city_automation(cityName, state)
     local ownerID, cityID = city:GetOwner(), city:GetID()
     return { city = city:GetName(), automated = on }, function()
         local c = Players[ownerID]:GetCityByID(cityID)
-        if c:IsProductionAutomated() ~= on then
+        if EngineData.isProductionAutomated(c) ~= on then
             return nil
         end
         return { queue = queueNames(c) }

@@ -113,6 +113,9 @@ local GAMEINFO_TABLES = {
     "Policies",
     "Resources",
     "Beliefs",
+    "Victories",
+    "Project_VictoryThresholds",
+    "UnitPromotions",
 }
 
 local function withEnv(fn)
@@ -212,6 +215,8 @@ local function withEnv(fn)
     dofile("src/dlc/UI/InGame/CivVAccess_QueryTech.lua")
     dofile("src/dlc/UI/InGame/CivVAccess_QueryTurn.lua")
     dofile("src/dlc/UI/InGame/CivVAccess_QueryDiplo.lua")
+    dofile("src/dlc/UI/InGame/CivVAccess_QueryVictory.lua")
+    dofile("src/dlc/UI/InGame/CivVAccess_QueryRules.lua")
 
     local ok, err = pcall(fn)
     restore()
@@ -648,6 +653,10 @@ function M.test_diplomacy_hides_the_unmet_and_reads_mood_only_where_shown()
                 GetCurrentEra = 0,
                 GetNumCities = 1,
                 IsDenouncingPlayer = false,
+                GetOpinionTable = {
+                    "[COLOR_NEGATIVE_TEXT]You settled too close to them.[ENDCOLOR]",
+                    "[COLOR_FADING_POSITIVE_TEXT]You share a common enemy.[ENDCOLOR]",
+                },
             })
         end
         Players[1] = major(1, "Greece")
@@ -678,12 +687,104 @@ function M.test_diplomacy_hides_the_unmet_and_reads_mood_only_where_shown()
         T.eq(data.civilizations[1].civ, "Greece")
         T.eq(data.civilizations[1].mood, "friendly")
         T.eq(data.civilizations[2].mood, nil, "no mood is shown for a civ at war")
+        local opinions = data.civilizations[1].opinions
+        T.eq(opinions[1].valence, -3, "a strong grievance")
+        T.eq(opinions[1].text, "You settled too close to them.", "colour markup stripped")
+        T.eq(opinions[2].valence, 1)
+        T.eq(data.civilizations[2].opinions, nil, "no reasons for a civ at war")
         T.eq(data.civilizations[1].openBordersFromThem, true)
         local geneva = data.cityStates[1]
         T.eq(geneva.trait, "religious")
         T.eq(geneva.ally, nil, "an unmet ally stays unnamed")
         T.eq(geneva.hasUnmetAlly, true)
         T.eq(geneva.quests, "Clear a barbarian camp")
+    end)
+end
+
+-- victory -------------------------------------------------------------------
+
+function M.test_victory_progress_names_only_met_civs()
+    withEnv(function()
+        save(PreGame, "IsVictory")
+        save(GameInfoTypes, "PROJECT_APOLLO_PROGRAM")
+        save(Game, "GetActiveTeam")
+        GameInfo.Victories = infoTable({ { Type = "VICTORY_DOMINATION" }, { Type = "VICTORY_SPACE_RACE" } })
+        PreGame.IsVictory = function()
+            return true
+        end
+        GameInfoTypes.PROJECT_APOLLO_PROGRAM = 50
+        Game.GetActiveTeam = function()
+            return 0
+        end
+        local met = { [0] = true, [1] = true, [2] = false }
+        local function team(apollo)
+            return fake({
+                IsHasMet = function(t)
+                    return met[t] == true
+                end,
+                GetProjectCount = function(proj)
+                    return (proj == 50 and apollo) and 1 or 0
+                end,
+            })
+        end
+        Teams[0], Teams[1], Teams[2] = team(false), team(false), team(true)
+        local function capital(originalOwner)
+            return fake({ IsOriginalMajorCapital = true, GetOriginalOwner = originalOwner })
+        end
+        local function major(id, civ, cities)
+            return fake({
+                GetTeam = id,
+                IsEverAlive = true,
+                IsAlive = true,
+                IsMinorCiv = false,
+                GetCivilizationShortDescription = civ,
+                Cities = iterate(cities),
+            })
+        end
+        -- Siam (unmet) took Greece's capital.
+        Players[0] = major(0, "Babylon", { capital(0) })
+        Players[1] = major(1, "Greece", {})
+        Players[2] = major(2, "Siam", { capital(2), capital(1) })
+        GameDefines.MAX_MAJOR_CIVS = 3
+
+        local data = Rpc._queries.victory_progress()
+        local greece = data.domination.capitals[2]
+        T.eq(greece.civ, "Greece")
+        T.eq(greece.heldBy, "unmet civilization", "the unmet conqueror stays unnamed")
+        T.eq(data.domination.capitals[3].civ, "unmet civilization")
+        T.eq(data.domination.yourCapitalsHeld, 1)
+        T.eq(#data.science.teams, 2, "an unmet team's spaceship is not listed")
+        T.eq(data.science.civsWithApollo, 1, "but its Apollo counts, as the screen shows")
+        T.eq(data.time, nil, "a disabled victory type is left out")
+    end)
+end
+
+-- rules ---------------------------------------------------------------------
+
+function M.test_explain_reads_the_loaded_rules_and_drops_undefined_text()
+    withEnv(function()
+        GameInfo.Technologies = infoTable({ { Type = "TECH_POTTERY", Description = "Pottery" } })
+        GameInfo.Buildings = infoTable({
+            {
+                Type = "BUILDING_GRANARY",
+                Description = "Granary",
+                Help = "[ICON_FOOD] +2 Food.",
+                Strategy = "TXT_KEY_NEVER_DEFINED",
+                Cost = 65,
+                GoldMaintenance = 1,
+                PrereqTech = "TECH_POTTERY",
+            },
+        })
+        local data = Rpc._queries.explain("granary")
+        T.eq(data.kind, "building")
+        T.eq(data.cost, 65)
+        T.eq(data.unlockedBy, "Pottery")
+        T.truthy(data.help ~= nil and not data.help:find("[ICON", 1, true), "icon markup filtered")
+        T.eq(data.strategy, nil, "an undefined key is not returned as raw text")
+        T.eq(data.strength, nil, "fields a building lacks are omitted")
+        local ok, err = pcall(Rpc._queries.explain, "granary", "unit")
+        T.falsy(ok, "a kind filter that excludes the match fails")
+        T.truthy(tostring(err):find("of kind unit", 1, true))
     end)
 end
 

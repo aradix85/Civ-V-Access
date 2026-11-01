@@ -130,7 +130,7 @@ function Invoke-SeamGuard {
         "IsVassal",
         "GetNumHistoricEvents", "GetHistoricEventTourism",
         "IsResourceImproveable", "GetSeeThrough",
-        "IsImprovementEmbassy", "GetBuildingInvestment",
+        "IsImprovementEmbassy", "GetBuildingInvestment", "IsProductionAutomated",
         "GetWarScore", "GetObserverUIOverridePlayer",
         "GetCombatBonusVsDifferentIdeologyModifier", "GetTourismInfluenceCombatModifier",
         "RangedDefenseModifier", "ScienceToStealAmount",

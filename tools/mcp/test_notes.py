@@ -34,7 +34,7 @@ def test_key_ignores_turn_and_differs_per_start():
     assert all(c.isalnum() or c in "_-" for c in a), a
 
 
-def test_updates_persist_and_render_for_the_player():
+def test_updates_persist_across_sessions():
     with tempfile.TemporaryDirectory() as base:
         n = _notes(base)
         n.update("set_strategy", text="Science first, no wars", victory_goal="science")
@@ -42,11 +42,9 @@ def test_updates_persist_and_render_for_the_player():
         n.update("set_directive", domain="production", text="Libraries before markets")
         data = _notes(base, turn=13).read()["notes"]
         assert data["strategy"]["victoryGoal"] == "science"
+        assert data["strategy"]["directives"]["production"] == "Libraries before markets"
         assert data["standingOrders"][0]["text"] == "Keep a warrior in every city"
         assert data["standingOrders"][0]["since"] == 12
-        with open(n.md_path, encoding="utf-8") as f:
-            text = f.read()
-        assert "Keep a warrior in every city" in text and "Libraries before markets" in text
 
 
 def test_removing_by_id_and_unknown_id_fails_loudly():

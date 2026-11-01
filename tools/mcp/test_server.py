@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -71,6 +72,7 @@ GAME_INFO = {
     "id": "g",
     "ok": True,
     "turn": 12,
+    "activePlayer": 0,
     "coordOrigin": ORIGIN,
     "data": {
         "civilizationType": "CIVILIZATION_BABYLON",
@@ -121,7 +123,11 @@ def test_action_is_sent_for_the_current_turn_and_journaled():
             "civ5_set_production", {"city": "Babylon", "item": "Granary"}
         )
         assert not is_error, text
-        assert calls[-1] == ("set_production", (12, "Babylon", "Granary", "replace")), calls
+        name, args = calls[-1]
+        assert name == "set_production", calls
+        assert args[:2] == (12, 0), "stamped with turn and active player"
+        assert abs(args[2] - time.time()) < 5, "and the time it was sent"
+        assert args[3:] == ("Babylon", "Granary", "replace"), args
         actions = json.loads(server.call_tool("civ5_game_notes", {})[0])["recentActions"]
         assert actions[-1]["tool"] == "civ5_set_production" and actions[-1]["ok"] is True
 
@@ -134,9 +140,9 @@ def test_move_converts_player_coordinates_to_engine_tiles():
     def check(calls):
         text, _ = server.call_tool("civ5_unit_action", {"unit": 7, "action": "move", "x": 2.5, "y": -1})
         name, args = calls[-1]
-        assert name == "unit_action" and args[:3] == (12, 7, "move"), calls
+        assert name == "unit_action" and args[3:5] == (7, "move"), calls
         ex, ey = server.geometry.engine_coords(ORIGIN, 2.5, -1)
-        assert args[3:] == (ex, ey), args
+        assert args[5:] == (ex, ey), args
         target = json.loads(text)["data"]["target"]
         assert (target["x"], target["y"]) == server.geometry.player_coords(ORIGIN, 12, 9)
 

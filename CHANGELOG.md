@@ -20,7 +20,9 @@ New Features and improvements:
 - The MCP bridge can read diplomacy: relations with civilizations and city-state influence and quests.
 - The MCP bridge can list your units with their orders, health, promotions and upgrades.
 - The MCP bridge can carry out commands you ask for: production, purchases, city automation, research and unit orders.
-- The MCP bridge keeps notes per game: your strategy, standing orders and decisions, readable as a text file.
+- The MCP bridge keeps notes per game: your strategy, standing orders and decisions.
+- The MCP bridge gives a briefing with warnings: starving cities, a treasury running out, enemies near cities, rivals close to winning.
+- The MCP bridge can read victory progress, why a leader feels the way they do, and the game's own rules text for anything.
 
 ## [2.4.0] - 2026-10-22
 

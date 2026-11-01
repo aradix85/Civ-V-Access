@@ -1136,6 +1136,17 @@ function EngineData.buildingInvested(city, buildingID)
     return false
 end
 
+-- Capability probe and drift read: per-city automated production. LekMod's
+-- NQMod-lineage DLL keeps the stock bindings, which do not expose it. See
+-- the vanilla file for the contract.
+function EngineData.productionAutomationAvailable()
+    return false
+end
+
+function EngineData.isProductionAutomated(city)
+    return false
+end
+
 -- Drift reads: the percent each city adds to the running tech / policy cost.
 -- LekMod keeps the vanilla bindings -- a whole-number world-size constant with
 -- no player-side modifier folded in -- so these read straight through. See the
