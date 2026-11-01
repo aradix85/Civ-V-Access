@@ -226,6 +226,7 @@ include("CivVAccess_QueryEmpire")
 include("CivVAccess_QueryTech")
 include("CivVAccess_QueryTurn")
 include("CivVAccess_QueryDiplo")
+include("CivVAccess_QueryGame")
 
 -- Track the WorldView Context include count across the session. The first
 -- include happens during pre-game setup (before LoadScreenClose); subsequent
