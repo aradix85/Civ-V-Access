@@ -142,6 +142,20 @@ local function resolveRow(tableName, prefix, arg)
 end
 Rpc.resolveRow = resolveRow
 
+-- What the player may call another player: "you", the civilization's
+-- name once met, or "unmet civilization" (as the game's unmet icon).
+function Rpc.civLabel(playerID)
+    local me = Game.GetActivePlayer()
+    if playerID == me then
+        return "you"
+    end
+    local p = Players[playerID]
+    if Teams[Players[me]:GetTeam()]:IsHasMet(p:GetTeam()) then
+        return p:GetCivilizationShortDescription()
+    end
+    return "unmet civilization"
+end
+
 -- === Queries ===
 -- Each takes string args straight from the request line and returns a
 -- table for the envelope's data field, or raises; the dispatcher turns a

@@ -25,6 +25,10 @@ New Features and improvements:
 - The MCP bridge can read victory progress, why a leader feels the way they do, and the game's own rules text for anything.
 - The MCP bridge can read how the game was set up: era, map, difficulty, pace, victory types and game options.
 - The MCP bridge can explain a civilization: its leader's traits and its unique units, buildings and improvements.
+- The MCP bridge lists choices waiting on you: policies, free techs and great people, a pantheon, research, idle cities.
+- The MCP bridge can read great people progress, trade routes and the World Congress.
+- The MCP bridge says which advisors recommend each item a city can build.
+- Under Vox Populi, the MCP bridge reads each city's happiness and unhappiness with where they come from.
 
 ## [2.4.0] - 2026-10-22
 

@@ -62,6 +62,16 @@ def test_slow_growth_follows_the_game_speed_and_skips_food_into_production():
     assert w.warnings({}, cities, {}, [], {}, None, growth_percent=300) == [], "30 turns is normal on Marathon"
 
 
+def test_decisions_and_vox_populi_city_unhappiness_are_reminded():
+    cities = [{"name": "Ur", "happiness": 2, "unhappiness": 5}, {"name": "Kish", "happiness": 4, "unhappiness": 1}]
+    decisions = {"freeTechs": 1, "citiesWithoutProduction": ["Babylon"]}
+    texts = _texts(w.warnings({}, cities, {}, [], {}, None, decisions=decisions))
+    assert "A free technology can be chosen." in texts
+    assert "Babylon has nothing to build." in texts
+    assert any(t.startswith("Ur is unhappy") for t in texts)
+    assert not any(t.startswith("Kish") for t in texts), texts
+
+
 def test_unmet_capitals_are_not_lumped_into_one_rival():
     victory = {
         "domination": {

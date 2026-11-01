@@ -147,6 +147,19 @@ the options and their trade-offs and leave the decision to the player.
   civilization (by name, adjective or leader) answers with its leader
   traits, unique units, buildings and improvements and what each
   replaces, and what it cannot train or build.
+- `civ5_decisions` — choices waiting on the player: free policies,
+  tenets, techs and great people, enough culture for a policy, a pantheon
+  that can be founded, research not set, cities with nothing to build,
+  units with a promotion ready. The briefing turns these into reminders.
+- `civ5_great_people` — per great person type the cities earning points
+  (banked, next cost; per turn and turns to go under Vox Populi), great
+  general and admiral progress, faith for the next great prophet.
+- `civ5_trade_routes` — routes you run, routes into your cities, and the
+  ten best your idle trade units could start, each with both ends and
+  what each end gets per turn.
+- `civ5_world_congress` — session status, members and delegates, your
+  votes or proposals left, proposals with what they would do, and the
+  resolutions in force. Read only.
 - `civ5_game_settings` — how the game was set up, as the game menu's
   details tab lists it: era, map, difficulty, pace, the last turn when
   there is a turn limit, victory types, enabled game options with their

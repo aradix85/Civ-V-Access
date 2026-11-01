@@ -228,6 +228,10 @@ include("CivVAccess_QueryTurn")
 include("CivVAccess_QueryDiplo")
 include("CivVAccess_QueryGame")
 include("CivVAccess_QueryVictory")
+include("CivVAccess_QueryDecisions")
+include("CivVAccess_QueryGreatPeople")
+include("CivVAccess_QueryTrade")
+include("CivVAccess_QueryLeague")
 include("CivVAccess_QueryRules")
 -- Bridge actions: commands the player asks the assistant to carry out.
 -- BridgeCore defines the helpers the others use, so it loads first.

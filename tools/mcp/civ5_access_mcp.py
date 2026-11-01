@@ -137,7 +137,11 @@ prefer it over memory. It also explains a civilization: its leader traits
 and uniques. civ5_game_settings shows how this game was set up (pace,
 map, difficulty, victory types, game options). civ5_victory_progress shows how close anyone is to
 winning. civ5_diplomacy includes, for each AI, the reasons behind its
-mood with a valence from -4 to +4.
+mood with a valence from -4 to +4. civ5_decisions lists choices waiting
+on the player; civ5_great_people, civ5_trade_routes and
+civ5_world_congress read those systems. city_details for one city says
+which of the game's advisors recommend each item it can build, and under
+Vox Populi where the city's happiness and unhappiness come from.
 
 Anchors: every spatial tool accepts an optional "anchor" argument --
 "capital" (default), "cursor" (the player's own map cursor), any known city
@@ -938,6 +942,49 @@ TOOLS = [
         "inputSchema": {"type": "object", "properties": {}, "required": []},
     },
     {
+        "name": "civ5_decisions",
+        "description": (
+            "Choices waiting on the player: a free policy or tenet, enough "
+            "culture for a policy, a free technology or great person, a "
+            "pantheon that can be founded, research not set, cities with "
+            "nothing to build, units with a promotion ready. Empty means "
+            "nothing to decide. The briefing includes it."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "civ5_great_people",
+        "description": (
+            "Where the next great people come from: per type, each city "
+            "earning points (banked, cost of the next one, and under Vox "
+            "Populi points per turn and turns to go); great general and "
+            "admiral progress; the faith the next great prophet needs."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "civ5_trade_routes",
+        "description": (
+            "Trade routes: the ones you run, the ones others run into your "
+            "cities, and the best routes your idle trade units could start "
+            "(top 10 by value to you, with the total count). Each names both "
+            "ends and what each end gets per turn, plus religious pressure. "
+            "Trade route slots used and available."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "civ5_world_congress",
+        "description": (
+            "The World Congress or United Nations: session status and turns "
+            "to the next session, members and their delegates (unmet ones "
+            "unnamed), your delegates or votes left and proposals left, the "
+            "proposals on the table with what each would do, and the "
+            "resolutions in force. Read only; voting stays with the player."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
         "name": "civ5_explain",
         "description": (
             "What something does, from this game's own rules text (Vox "
@@ -988,6 +1035,10 @@ PASSTHROUGH_TOOLS = {
     "civ5_units": ("units", "filter"),
     "civ5_victory_progress": ("victory_progress", None),
     "civ5_game_settings": ("game_settings", None),
+    "civ5_decisions": ("decisions", None),
+    "civ5_great_people": ("great_people", None),
+    "civ5_trade_routes": ("trade_routes", None),
+    "civ5_world_congress": ("world_congress", None),
 }
 
 ACTION_TOOLS = {
@@ -1301,6 +1352,7 @@ BRIEFING_QUERIES = (
     ("units", "units", ()),
     ("victory", "victory_progress", ()),
     ("turn", "turn_summary", ("0",)),
+    ("decisions", "decisions", ()),
 )
 
 
@@ -1346,6 +1398,7 @@ def call_briefing():
             data["victory"],
             origin,
             info["data"].get("growthPercent"),
+            data["decisions"],
         ),
     }
     game_notes = _notes_for(info)

@@ -56,6 +56,7 @@ read_globals = {
     "OrderTypes", "ReligionTypes", "CityUpdateTypes",
     "MinorCivPersonalityTypes",
     "CityAIFocusTypes", "MajorCivApproachTypes", "MinorCivTraitTypes",
+    "AdvisorTypes",
 
     -- Platform / session / content
     "Modding", "Matchmaking", "Network", "Steam", "SaveFileList",

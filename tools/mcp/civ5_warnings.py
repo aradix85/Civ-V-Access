@@ -45,6 +45,9 @@ def _city_warnings(cities, add, growth_percent):
             add(IMPORTANT, f"{c['name']} is not growing (no food surplus).")
         elif (food.get("turnsToGrow") or 0) > slow:
             add(INFO, f"{c['name']} grows slowly ({food['turnsToGrow']} turns).")
+        happy, unhappy = c.get("happiness"), c.get("unhappiness")
+        if happy is not None and unhappy is not None and unhappy > happy:
+            add(INFO, f"{c['name']} is unhappy ({unhappy} unhappiness against {happy} happiness).")
         if c.get("maxHealth") and c.get("health") is not None and c["health"] < c["maxHealth"]:
             add(IMPORTANT, f"{c['name']} is damaged ({c['health']} of {c['maxHealth']}).")
         if c.get("resistanceTurns"):
@@ -92,6 +95,23 @@ def _unit_warnings(units, add):
         add(INFO, f"{_plural(promotable, 'unit')} can be promoted.")
 
 
+def _decision_warnings(decisions, add):
+    if decisions.get("freePolicies") or decisions.get("policyAffordable"):
+        add(IMPORTANT, "A social policy can be adopted.")
+    if decisions.get("freeTenets"):
+        add(IMPORTANT, "A free ideology tenet can be chosen.")
+    if decisions.get("freeTechs"):
+        add(IMPORTANT, "A free technology can be chosen.")
+    if decisions.get("freeGreatPeople") or decisions.get("mayaBonusGreatPeople"):
+        add(IMPORTANT, "A free great person can be chosen.")
+    if decisions.get("pantheonAvailable"):
+        add(IMPORTANT, "A pantheon can be founded.")
+    if decisions.get("researchNotSet"):
+        add(IMPORTANT, "No research is set.")
+    for name in decisions.get("citiesWithoutProduction", []):
+        add(IMPORTANT, f"{name} has nothing to build.")
+
+
 def _victory_warnings(victory, add):
     for team in (victory.get("science") or {}).get("teams", []):
         if team.get("civ") != "you" and team.get("apollo"):
@@ -123,7 +143,7 @@ def hex_map_from(origin):
     return geometry.HexMap(origin["mapWidth"], origin["mapHeight"], origin.get("wrapX", False))
 
 
-def warnings(empire, cities, hostiles, units, victory, origin, growth_percent=100):
+def warnings(empire, cities, hostiles, units, victory, origin, growth_percent=100, decisions=None):
     """What needs attention now, most urgent first. Coordinates in the
     inputs are raw engine coordinates (distances are measured before the
     payload is converted for the player). growth_percent is the game
@@ -137,5 +157,6 @@ def warnings(empire, cities, hostiles, units, victory, origin, growth_percent=10
     _economy_warnings(empire, add)
     _threat_warnings(hostiles, hex_map_from(origin), add)
     _unit_warnings(units, add)
+    _decision_warnings(decisions or {}, add)
     _victory_warnings(victory or {}, add)
     return sorted(out, key=lambda w: _ORDER[w["level"]])

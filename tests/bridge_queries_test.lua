@@ -144,6 +144,7 @@ local function withEnv(fn)
         "GetActiveQuestToolTip",
         "PreGame",
         "MapUtilities",
+        "AdvisorTypes",
     }) do
         save(_G, name)
     end
@@ -156,9 +157,22 @@ local function withEnv(fn)
         "GetMaxTurns",
         "GetStartTurn",
         "IsNetworkMultiPlayer",
+        "GetNumActiveLeagues",
+        "GetActiveLeague",
+        "IsUnitedNationsActive",
+        "SetAdvisorRecommenderCity",
+        "IsBuildingRecommended",
+        "IsUnitRecommended",
+        "IsProjectRecommended",
     }) do
         save(Game, k)
     end
+    AdvisorTypes = { ADVISOR_ECONOMIC = 0, ADVISOR_MILITARY = 1, ADVISOR_SCIENCE = 2, ADVISOR_FOREIGN = 3 }
+    Game.SetAdvisorRecommenderCity = function() end
+    local function never()
+        return false
+    end
+    Game.IsBuildingRecommended, Game.IsUnitRecommended, Game.IsProjectRecommended = never, never, never
     for _, k in ipairs(GAMEINFO_TABLES) do
         save(GameInfo, k)
         GameInfo[k] = infoTable({})
@@ -233,6 +247,10 @@ local function withEnv(fn)
     dofile("src/dlc/UI/InGame/CivVAccess_QueryVictory.lua")
     dofile("src/dlc/UI/InGame/CivVAccess_QueryRules.lua")
     dofile("src/dlc/UI/InGame/CivVAccess_QueryGame.lua")
+    dofile("src/dlc/UI/InGame/CivVAccess_QueryDecisions.lua")
+    dofile("src/dlc/UI/InGame/CivVAccess_QueryGreatPeople.lua")
+    dofile("src/dlc/UI/InGame/CivVAccess_QueryTrade.lua")
+    dofile("src/dlc/UI/InGame/CivVAccess_QueryLeague.lua")
 
     local ok, err = pcall(fn)
     restore()
@@ -320,6 +338,47 @@ function M.test_city_summary_growth_and_production_turns()
     end)
 end
 
+function M.test_city_happiness_under_vox_populi()
+    withEnv(function()
+        EngineData.happinessSummary = function()
+            return { mode = "approval", value = 60, state = "happy" }
+        end
+        installCityPlayer({
+            fakeCity({
+                name = "Babylon",
+                capital = true,
+                food = 2,
+                queue = {},
+                extra = {
+                    GetLocalHappiness = 4,
+                    GetUnhappinessAggregated = 6.5,
+                    GetCityHappinessBreakdown = "[ICON_HAPPINESS_1] +3 from buildings[NEWLINE]+1 from the palace",
+                    GetCityUnhappinessBreakdown = function(withMedian)
+                        return withMedian and "Median need: 2[NEWLINE][NEWLINE]+4 from boredom" or "+4 from boredom"
+                    end,
+                    IsHasBuilding = false,
+                    CanConstruct = false,
+                    CanTrain = false,
+                    CanCreate = false,
+                    CanMaintain = false,
+                    GetSpecialistCount = 0,
+                    GetFocusType = -1,
+                    GetJONSCultureStored = 0,
+                    GetJONSCultureThreshold = 10,
+                    GetReligiousMajority = -1,
+                },
+            }),
+        })
+        local summary = Rpc._queries.city_details().cities[1]
+        T.eq(summary.happiness, 4)
+        T.eq(summary.unhappiness, 6, "whole points, as the banner shows")
+        local data = Rpc._queries.city_details("Babylon")
+        T.eq(#data.happinessSources, 2)
+        T.falsy(data.happinessSources[1]:find("[ICON", 1, true), "markup filtered")
+        T.eq(table.concat(data.unhappinessSources, "|"), "Median need: 2|+4 from boredom", "empty lines dropped")
+    end)
+end
+
 function M.test_city_details_unknown_name_raises()
     withEnv(function()
         installCityPlayer({ fakeCity({ name = "Rome", food = 1, queue = {} }) })
@@ -344,6 +403,13 @@ function M.test_city_details_lists_only_what_the_city_can_produce()
             { Type = "BUILDING_MONUMENT", BuildingClass = "BUILDINGCLASS_MONUMENT", Description = "Monument" },
         })
         local canConstruct = { [0] = true, [1] = false, [2] = true, [3] = false }
+        local recommenderCity
+        Game.SetAdvisorRecommenderCity = function(c)
+            recommenderCity = c
+        end
+        Game.IsBuildingRecommended = function(id, advisor)
+            return recommenderCity ~= nil and id == 2 and advisor == AdvisorTypes.ADVISOR_SCIENCE
+        end
         installCityPlayer({
             fakeCity({
                 name = "Rome",
@@ -373,6 +439,9 @@ function M.test_city_details_lists_only_what_the_city_can_produce()
             names[#names + 1] = b.name .. ":" .. b.kind
         end
         T.eq(table.concat(names, ","), "Granary:building,Pyramids:worldWonder")
+        T.eq(data.canProduce.buildings[1].advisors, nil, "no advisor, no field")
+        T.eq(table.concat(data.canProduce.buildings[2].advisors, ","), "science", "after pointing the advisors at the city")
+        T.eq(data.happinessSources, nil, "the Vox Populi breakdown only under its happiness model")
         T.eq(#data.buildings, 1)
         T.eq(data.buildings[1].name, "Monument")
         T.eq(data.borderGrowth.turns, 10)
@@ -1073,6 +1142,222 @@ function M.test_game_settings_lists_what_the_game_menu_shows()
         T.eq(data.lastTurn, nil, "no turn limit, no last turn")
         T.eq(#data.gameOptions, 2, "a network game lists the multiplayer options")
         T.eq(data.gameOptions[2].name, "Multiplayer only")
+    end)
+end
+
+-- decisions, great people, trade, congress ----------------------------------
+
+-- Player 0 has met player 1 and not player 2.
+local function installMeeting()
+    Teams[0] = fake({
+        IsHasMet = function(team)
+            return team ~= 2
+        end,
+    })
+    for i = 1, 2 do
+        Players[i] = fake({
+            GetTeam = i,
+            GetCivilizationShortDescription = i == 1 and "Egypt" or "Secret",
+            IsMinorCiv = false,
+            IsAlive = true,
+        })
+    end
+end
+
+function M.test_decisions_list_only_what_waits_on_the_player()
+    withEnv(function()
+        GameInfo.Units = infoTable({ { Type = "UNIT_WARRIOR", Description = "Warrior" } })
+        local function unit(id, ready)
+            return fake({ GetID = id, GetUnitType = 0, Ready = ready })
+        end
+        local units = { unit(7, true), unit(8, false) }
+        EngineData.unitPromotionReady = function(u)
+            return u:Ready()
+        end
+        Players[0] = fake({
+            GetNumFreePolicies = 1,
+            GetNumFreeTenets = 0,
+            GetNumFreeTechs = 0,
+            GetNumFreeGreatPeople = 0,
+            GetNumMayaBoosts = 0,
+            GetJONSCulture = 40,
+            GetNextPolicyCost = 50,
+            HasCreatedPantheon = false,
+            CanCreatePantheon = function(checkFaith)
+                return checkFaith == true
+            end,
+            GetCurrentResearch = -1,
+            Cities = iterate({
+                fake({ GetName = "Babylon", GetOrderQueueLength = 0, IsPuppet = false }),
+                fake({ GetName = "Ur", GetOrderQueueLength = 1, IsPuppet = false }),
+                fake({ GetName = "Kish", GetOrderQueueLength = 0, IsPuppet = true }),
+            }),
+            Units = iterate(units),
+        })
+        local data = Rpc._queries.decisions()
+        T.eq(data.freePolicies, 1)
+        T.eq(data.freeTenets, nil, "nothing to decide, no field")
+        T.eq(data.policyAffordable, nil, "40 culture of 50 is not yet a policy")
+        T.eq(data.pantheonAvailable, true, "checked against the faith the player has")
+        T.eq(data.researchNotSet, true)
+        T.eq(table.concat(data.citiesWithoutProduction, ","), "Babylon", "a puppet picks its own production")
+        T.eq(#data.promotionsReady, 1)
+        T.eq(data.promotionsReady[1].id, 7)
+    end)
+end
+
+function M.test_great_people_per_city_with_turns_where_the_rate_is_known()
+    withEnv(function()
+        GameInfo.Specialists = infoTable({
+            { Type = "SPECIALIST_SCIENTIST", GreatPeopleUnitClass = "UNITCLASS_SCIENTIST" },
+            { Type = "SPECIALIST_ENGINEER", GreatPeopleUnitClass = "UNITCLASS_ENGINEER" },
+            { Type = "SPECIALIST_CITIZEN" },
+        })
+        GameInfo.UnitClasses = infoTable({
+            { Type = "UNITCLASS_SCIENTIST", Description = "Great Scientist" },
+            { Type = "UNITCLASS_ENGINEER", Description = "Great Engineer" },
+        })
+        local city = fake({
+            GetName = "Babylon",
+            GetSpecialistGreatPersonProgress = function(id)
+                return id == 0 and 40 or 0
+            end,
+            GetSpecialistRate = function(id)
+                return id == 0 and 450 or 0
+            end,
+            GetSpecialistUpgradeThreshold = 100,
+        })
+        Players[0] = fake({
+            Cities = iterate({ city }),
+            GetCombatExperience = 30,
+            GreatGeneralThreshold = 200,
+            GetNavalCombatExperience = 0,
+            GreatAdmiralThreshold = 200,
+            GetFaith = 50,
+            GetMinimumFaithNextGreatProphet = 300,
+        })
+        local data = Rpc._queries.great_people()
+        T.eq(#data.fromSpecialists, 1, "a type no city earns points for is left out")
+        local sci = data.fromSpecialists[1]
+        T.eq(sci.name, "Great Scientist")
+        T.eq(sci.cities[1].perTurn, 4.5)
+        T.eq(sci.cities[1].turns, 14, "60 points to go at 4.5 a turn")
+        T.eq(data.general.threshold, 200)
+        T.eq(data.prophet.faithNeeded, 300)
+    end)
+end
+
+function M.test_trade_routes_name_both_ends_and_rank_candidates()
+    withEnv(function()
+        installMeeting()
+        local function route(toID, gold, extra)
+            local r = {
+                FromID = 0,
+                FromCityName = "Babylon",
+                ToID = toID,
+                ToCityName = "Thebes",
+                Domain = DomainTypes.DOMAIN_LAND,
+                FromGPT = gold,
+                ToGPT = 150,
+                FromScience = 0,
+                ToScience = 0,
+                ToFood = 0,
+                ToProduction = 0,
+                FromReligion = 0,
+                FromPressure = 0,
+                ToReligion = 0,
+                ToPressure = 0,
+            }
+            for k, v in pairs(extra or {}) do
+                r[k] = v
+            end
+            return r
+        end
+        local candidates = {}
+        for i = 1, 12 do
+            candidates[i] = route(1, i * 100)
+        end
+        candidates[13] = route(0, 0, { ToFood = 2000 })
+        Players[0] = fake({
+            GetTeam = 0,
+            GetTradeRoutes = { route(1, 400, { TurnsLeft = 12 }) },
+            GetTradeRoutesToYou = { route(2, 300) },
+            GetTradeRoutesAvailable = candidates,
+            GetNumInternationalTradeRoutesUsed = 1,
+            GetNumInternationalTradeRoutesAvailable = 2,
+        })
+        local data = Rpc._queries.trade_routes()
+        local mine = data.yourRoutes[1]
+        T.eq(mine.from.city, "Babylon")
+        T.eq(mine.from.civ, nil, "your own city needs no civilization")
+        T.eq(mine.to.civ, "Egypt")
+        T.eq(mine.originGets.gold, 4)
+        T.eq(mine.originGets.science, nil, "zero yields are left out")
+        T.eq(mine.turnsLeft, 12)
+        T.eq(data.routesToYou[1].to.civ, "unmet civilization", "an unmet partner stays unnamed")
+        T.eq(data.availableCount, 13)
+        T.eq(#data.bestAvailable, 10)
+        T.eq(data.bestAvailable[1].destinationGets.food, 20, "an internal route's food counts for you")
+        T.eq(data.bestAvailable[2].originGets.gold, 12)
+    end)
+end
+
+function M.test_world_congress_reads_the_session_and_hides_the_unmet()
+    withEnv(function()
+        Game.GetNumActiveLeagues = function()
+            return 0
+        end
+        T.eq(Rpc._queries.world_congress().active, false)
+
+        installMeeting()
+        Players[0] = fake({ GetTeam = 0, IsAlive = true, IsMinorCiv = false })
+        local votes = { [0] = 4, [1] = 6, [2] = 2 }
+        local league = fake({
+            GetName = "World Congress",
+            IsInSession = true,
+            IsInSpecialSession = false,
+            GetHostMember = 1,
+            IsMember = function(i)
+                return votes[i] ~= nil
+            end,
+            CalculateStartingVotesForMember = function(i)
+                return votes[i]
+            end,
+            GetRemainingVotesForMember = 3,
+            GetEnactProposals = { { Type = 5, ID = 9, ProposalPlayer = 2 } },
+            GetRepealProposals = {},
+            GetEnactProposalsOnHold = {},
+            GetRepealProposalsOnHold = {},
+            GetActiveResolutions = { { Type = 6, ID = 2 } },
+            GetResolutionName = function(t)
+                return t == 5 and "Embargo" or "Arts Funding"
+            end,
+            GetResolutionDetails = function(t)
+                return t == 5 and "[ICON_GOLD] No trade routes." or ""
+            end,
+        })
+        Game.GetNumActiveLeagues = function()
+            return 1
+        end
+        Game.GetActiveLeague = function()
+            return league
+        end
+        Game.IsUnitedNationsActive = function()
+            return false
+        end
+        for i = 3, GameDefines.MAX_MAJOR_CIVS - 1 do
+            Players[i] = fake({ IsAlive = false })
+        end
+        local data = Rpc._queries.world_congress()
+        T.eq(data.inSession, true)
+        T.eq(data.yourVotesLeft, 3)
+        T.eq(data.members[1].civ, "Egypt", "most delegates first")
+        T.eq(data.members[1].host, true)
+        T.eq(data.members[3].civ, "unmet civilization")
+        T.eq(data.proposals[1].name, "Embargo")
+        T.eq(data.proposals[1].proposedBy, "unmet civilization")
+        T.falsy(data.proposals[1].details:find("[ICON", 1, true), "markup filtered")
+        T.eq(data.resolutionsInForce[1].details, nil, "empty details are left out")
     end)
 end
 

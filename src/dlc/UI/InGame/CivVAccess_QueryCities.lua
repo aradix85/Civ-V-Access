@@ -5,8 +5,10 @@
 -- Without an argument every own city comes back as a compact summary
 -- (growth, production, yields, health, status). With a city name the one
 -- city comes back in full: the production queue, the buildings it has,
--- everything it can produce right now with turn counts, specialists,
--- border growth, religion and focus. Only the player's own cities are
+-- everything it can produce right now with turn counts and which of the
+-- game's advisors recommend it, specialists, border growth, religion,
+-- focus, and under Vox Populi where its happiness and unhappiness come
+-- from. Only the player's own cities are
 -- read, so nothing here goes beyond what the city screen shows.
 -- Every value is read live at call time.
 
@@ -135,12 +137,47 @@ local function citySummary(player, city)
     if not city:IsCapital() then
         entry.connectedToCapital = player:IsCapitalConnectedToCity(city)
     end
-    -- Per-city unhappiness exists only under the vanilla surplus model;
-    -- Vox Populi tracks happiness through citizen needs instead.
-    if EngineData.happinessSummary(player).mode == "surplus" then
+    -- Vanilla: the city's share of empire unhappiness. Vox Populi: the
+    -- city's own happiness against its unhappiness from citizen needs, the
+    -- two numbers the city banner and city screen show.
+    local mode = EngineData.happinessSummary(player).mode
+    if mode == "surplus" then
         entry.unhappiness = EngineData.unhappinessFromCity(player, city) / 100
+    elseif mode == "approval" then
+        entry.happiness = city:GetLocalHappiness()
+        entry.unhappiness = math.floor(city:GetUnhappinessAggregated())
     end
     return entry
+end
+
+-- The engine's prebuilt per-source breakdown, one line per source.
+local function breakdownLines(text)
+    local out = {}
+    for line in ((text or "") .. "[NEWLINE]"):gmatch("(.-)%[NEWLINE%]") do
+        local clean = TextFilter.filter(line)
+        if clean ~= nil and clean:match("%S") then
+            out[#out + 1] = clean
+        end
+    end
+    return out
+end
+
+-- Which of the game's advisors recommend an item, as the production
+-- chooser marks it (ChooseProductionLogic.advisorSuffix); nil when none.
+-- Needs Game.SetAdvisorRecommenderCity(city) first.
+local ADVISORS = { "ECONOMIC", "MILITARY", "SCIENCE", "FOREIGN" }
+local function recommendedBy(isRecommended, id)
+    local out = {}
+    for _, name in ipairs(ADVISORS) do
+        local advisor = AdvisorTypes["ADVISOR_" .. name]
+        if advisor ~= nil and isRecommended(id, advisor) then
+            out[#out + 1] = Locale.ToLower(name)
+        end
+    end
+    if #out == 0 then
+        return nil
+    end
+    return out
 end
 
 local function ownedBuildings(city)
@@ -157,24 +194,33 @@ end
 -- the production chooser shows. Processes (wealth, research) have none.
 local function producible(city)
     local buildings, units, projects, processes = {}, {}, {}, {}
+    Game.SetAdvisorRecommenderCity(city)
     for row in GameInfo.Buildings() do
         if city:CanConstruct(row.ID) then
             buildings[#buildings + 1] = {
                 name = Text.key(row.Description),
                 kind = buildingKind(row),
                 turns = city:GetBuildingProductionTurnsLeft(row.ID),
+                advisors = recommendedBy(Game.IsBuildingRecommended, row.ID),
             }
         end
     end
     for row in GameInfo.Units() do
         if city:CanTrain(row.ID, 0) then
-            units[#units + 1] = { name = Text.key(row.Description), turns = city:GetUnitProductionTurnsLeft(row.ID) }
+            units[#units + 1] = {
+                name = Text.key(row.Description),
+                turns = city:GetUnitProductionTurnsLeft(row.ID),
+                advisors = recommendedBy(Game.IsUnitRecommended, row.ID),
+            }
         end
     end
     for row in GameInfo.Projects() do
         if city:CanCreate(row.ID) then
-            projects[#projects + 1] =
-                { name = Text.key(row.Description), turns = city:GetProjectProductionTurnsLeft(row.ID) }
+            projects[#projects + 1] = {
+                name = Text.key(row.Description),
+                turns = city:GetProjectProductionTurnsLeft(row.ID),
+                advisors = recommendedBy(Game.IsProjectRecommended, row.ID),
+            }
         end
     end
     for row in GameInfo.Processes() do
@@ -238,6 +284,11 @@ function queries.city_details(name)
     local religion = city:GetReligiousMajority()
     if religion >= 0 then
         data.religion = Text.key(Game.GetReligionName(religion))
+    end
+    if EngineData.happinessSummary(player).mode == "approval" then
+        data.happinessSources = breakdownLines(city:GetCityHappinessBreakdown())
+        -- With the median need context, as the city screen tooltip shows it.
+        data.unhappinessSources = breakdownLines(city:GetCityUnhappinessBreakdown(true))
     end
     return data
 end
