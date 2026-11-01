@@ -51,6 +51,9 @@ function actions.move_spy(spyArg, target, role)
     local movedAs
 
     if Locale.ToLower(target) == "hideout" then
+        if agent.CityX == -1 then
+            error(spyName .. " is already in the hideout")
+        end
         Network.SendMoveSpy(me, agent.AgentID, -1, -1, false)
         Bridge.sent()
         Bridge.speak(spyName .. ", " .. Text.key("TXT_KEY_MOVE_SPY_HIDEOUT_BUTTON"))

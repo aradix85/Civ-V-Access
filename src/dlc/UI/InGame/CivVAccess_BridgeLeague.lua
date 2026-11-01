@@ -119,7 +119,7 @@ function actions.league_vote(idArg, direction, votesArg, choiceArg)
     end
     Bridge.sent()
     Bridge.speak(name .. ", " .. choiceLabel .. ", " .. votes)
-    return { proposal = name, choice = choiceLabel, delegates = votes }, function()
+    return { proposal = name, choice = choiceLabel, delegates = votes, delegatesLeft = remaining - votes }, function()
         local left = Game.GetActiveLeague():GetRemainingVotesForMember(me)
         if left > remaining - votes then
             return nil

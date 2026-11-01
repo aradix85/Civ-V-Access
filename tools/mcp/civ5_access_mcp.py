@@ -902,17 +902,17 @@ TOOLS = [
         "name": "civ5_establish_trade_route",
         "description": (
             "ACTION. Send a caravan or cargo ship (id from civ5_units) on a "
-            "trade route to the named city, from where it stands. kind "
-            "(international, food, production) is needed when a city of yours "
-            "takes both a food and a production route. A refusal lists the "
-            "destinations that unit can reach."
+            "trade route to the named city, from the city it stands in. kind "
+            "(international, food, production, or under Vox Populi wonder) is "
+            "needed when a city takes more than one kind of route. A refusal "
+            "lists the destinations that unit can reach."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "unit": {"type": "integer"},
                 "city": {"type": "string"},
-                "kind": {"type": "string", "enum": ["international", "food", "production"]},
+                "kind": {"type": "string", "enum": ["international", "food", "production", "wonder"]},
             },
             "required": ["unit", "city"],
         },

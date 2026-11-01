@@ -27,6 +27,10 @@ local function connectionKind(connectionType)
     if connectionType == TradeConnectionTypes.TRADE_CONNECTION_INTERNATIONAL then
         return "international"
     end
+    -- Vox Populi: carrying a wonder's resource to the city building it.
+    if connectionType == TradeConnectionTypes.TRADE_CONNECTION_WONDER_RESOURCE then
+        return "wonder"
+    end
     return "other"
 end
 
@@ -57,7 +61,11 @@ function actions.establish_trade_route(unitArg, cityName, kind)
         error(unitName .. " cannot start a route to " .. cityName .. "; possible: " .. table.concat(names, ", "))
     end
     if #matches > 1 then
-        error(cityName .. " takes a food or a production route; say which")
+        local kinds = {}
+        for _, mm in ipairs(matches) do
+            kinds[#kinds + 1] = mm.kind
+        end
+        error(cityName .. " takes more than one kind of route (" .. table.concat(kinds, ", ") .. "); say which")
     end
     local m = matches[1]
     local plotIndex = Map.GetPlot(m.dest.X, m.dest.Y):GetPlotIndex()

@@ -25,6 +25,8 @@ function queries.religion()
         religionsStillToFound = Game.GetNumReligionsStillToFound(),
     }
     if player:HasCreatedPantheon() then
+        -- NO_BELIEF under the Community Patch for a player with a religion
+        -- but no pantheon of its own (see QueryEmpire).
         local id = player:GetBeliefInPantheon()
         if GameInfo.Beliefs[id] ~= nil then
             out.pantheon = beliefEntry(id)
@@ -40,9 +42,7 @@ function queries.religion()
     if religion > 0 then
         local beliefs = {}
         for _, id in ipairs(Game.GetBeliefsInReligion(religion)) do
-            if GameInfo.Beliefs[id] ~= nil then
-                beliefs[#beliefs + 1] = beliefEntry(id)
-            end
+            beliefs[#beliefs + 1] = beliefEntry(id)
         end
         local holy = EngineData.holyCityForReligion(religion, player)
         out.religion = {

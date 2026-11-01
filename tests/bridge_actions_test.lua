@@ -833,15 +833,27 @@ end
 
 function M.test_adopt_policy_sends_the_policy_screen_commit()
     withEnv(function()
-        GameInfo.PolicyBranchTypes = infoTable({ { Type = "POLICY_BRANCH_TRADITION", Description = "Tradition" } })
+        GameInfo.PolicyBranchTypes = infoTable({
+            { Type = "POLICY_BRANCH_TRADITION", Description = "Tradition", PurchaseByLevel = false },
+            { Type = "POLICY_BRANCH_FREEDOM", Description = "Freedom", PurchaseByLevel = true },
+        })
         GameInfo.Policies = infoTable({
             { Type = "POLICY_ARISTOCRACY", Description = "Aristocracy", PolicyBranchType = "POLICY_BRANCH_TRADITION" },
+            -- The branch's free starting policy, same name, no branch.
+            { Type = "POLICY_TRADITION", Description = "Tradition" },
+            { Type = "POLICY_SPACE_PROCUREMENTS", Description = "Space Procurements", PolicyBranchType = "POLICY_BRANCH_FREEDOM", Level = 3 },
+            { Type = "POLICY_A", Description = "A", PolicyBranchType = "POLICY_BRANCH_FREEDOM", Level = 3 },
+            { Type = "POLICY_B", Description = "B", PolicyBranchType = "POLICY_BRANCH_FREEDOM", Level = 3 },
+            { Type = "POLICY_C", Description = "C", PolicyBranchType = "POLICY_BRANCH_FREEDOM", Level = 3 },
         })
         local adoptable, has, opened = false, false, false
+        local ownedTenets = { [3] = true, [4] = true, [5] = true }
         activePlayer({
             GetID = 0,
-            HasPolicy = function()
-                return has
+            IsPolicyBlocked = false,
+            IsPolicyBranchBlocked = false,
+            HasPolicy = function(id)
+                return ownedTenets[id] or (id == 0 and has)
             end,
             CanAdoptPolicy = function()
                 return adoptable
@@ -866,8 +878,13 @@ function M.test_adopt_policy_sends_the_policy_screen_commit()
         T.truthy(reply:find('"confirmed":true', 1, true), reply)
 
         reply = request("id3\tadopt_policy\t" .. stamp() .. "\tTradition")
+        T.eq(calls[2][2], 0, "the branch, not its same-named free starting policy")
         T.eq(calls[2][3], false, "a branch is opened with the branch flag")
         T.truthy(reply:find('"opened":true', 1, true), reply)
+
+        reply = request("id4\tadopt_policy\t" .. stamp() .. "\tSpace Procurements")
+        T.truthy(reply:find("level 3 tenet slot is taken", 1, true), reply)
+        T.eq(#calls, 2, "no tenet beyond the screen's slots")
     end)
 end
 
@@ -1006,7 +1023,7 @@ function M.test_trade_route_asks_which_kind_when_a_city_takes_two()
             { X = 2, Y = 0, TradeConnectionType = 0 },
         })
         local reply = request("id1\testablish_trade_route\t" .. stamp() .. "\t7\tUr")
-        T.truthy(reply:find("food or a production route", 1, true), reply)
+        T.truthy(reply:find("more than one kind of route (food, production)", 1, true), reply)
         reply = request("id2\testablish_trade_route\t" .. stamp() .. "\t7\tBabylon")
         T.truthy(reply:find("possible: Ur (food), Ur (production), Thebes (international)", 1, true), reply)
         T.eq(#calls, 0)
@@ -1042,7 +1059,9 @@ function M.test_move_spy_sends_a_diplomat_only_to_a_peaceful_capital()
             },
             GetAvailableSpyRelocationCities = { { PlayerID = 1, CityID = 4 }, { PlayerID = 1, CityID = 5 } },
         })
-        local reply = request("id1\tmove_spy\t" .. stamp() .. "\tAshur\tMemphis\tdiplomat")
+        local reply = request("id0\tmove_spy\t" .. stamp() .. "\tAshur\thideout")
+        T.truthy(reply:find("already in the hideout", 1, true), reply)
+        reply = request("id1\tmove_spy\t" .. stamp() .. "\tAshur\tMemphis\tdiplomat")
         T.truthy(reply:find("only go to the capital", 1, true), reply)
         reply = request("id2\tmove_spy\t" .. stamp() .. "\tAshur\tKarnak")
         T.truthy(reply:find("possible: Thebes, Memphis", 1, true), reply)

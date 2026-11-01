@@ -1503,8 +1503,8 @@ end
 
 function M.test_combat_odds_previews_ranged_first_and_never_through_fog()
     withEnv(function()
-        GameInfo.Units = infoTable({ { Type = "UNIT_ARCHER", Description = "Archer" } })
-        local visible = true
+        GameInfo.Units = infoTable({ { Type = "UNIT_ARCHER", Description = "Archer", RangedCombat = 7 } })
+        local visible, canStrike = true, true
         save(Map, "GetPlot")
         Map.GetPlot = function()
             return fake({
@@ -1521,7 +1521,15 @@ function M.test_combat_odds_previews_ranged_first_and_never_through_fog()
             end,
         }
         Players[0] = fake({
-            GetUnitByID = fake({ IsDead = false, CanRangeStrike = true, GetUnitType = 0, GetX = 1, GetY = 1 }),
+            GetUnitByID = fake({
+                IsDead = false,
+                CanRangeStrike = function()
+                    return canStrike
+                end,
+                GetUnitType = 0,
+                GetX = 1,
+                GetY = 1,
+            }),
         })
         local data = Rpc._queries.combat_odds("7", "3", "1")
         T.eq(data.attack, "ranged")
@@ -1529,6 +1537,11 @@ function M.test_combat_odds_previews_ranged_first_and_never_through_fog()
         T.eq(data.preview, "Archer, 7 vs 5, likely victory")
         Rpc._queries.combat_odds("7", "3", "1", "melee")
         T.eq(asked, false, "melee when asked")
+        canStrike, asked = false, nil
+        data = Rpc._queries.combat_odds("7", "3", "1")
+        T.eq(data.attack, "ranged", "still a ranged unit after it has attacked")
+        T.eq(data.cannotAttackNow, true)
+        T.eq(asked, nil, "no melee preview stands in for it")
         visible, asked = false, nil
         data = Rpc._queries.combat_odds("7", "3", "1")
         T.eq(data.visible, false)
