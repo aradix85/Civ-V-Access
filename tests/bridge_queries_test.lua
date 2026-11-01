@@ -132,7 +132,13 @@ local function withEnv(fn)
     }) do
         save(_G, name)
     end
-    for _, k in ipairs({ "GetActivePlayer", "GetGameTurn", "GetGameTurnYear", "GetResourceUsageType", "GetReligionName" }) do
+    for _, k in ipairs({
+        "GetActivePlayer",
+        "GetGameTurn",
+        "GetGameTurnYear",
+        "GetResourceUsageType",
+        "GetReligionName",
+    }) do
         save(Game, k)
     end
     for _, k in ipairs(GAMEINFO_TABLES) do
@@ -472,19 +478,48 @@ function M.test_tech_unlocks_follow_the_players_own_uniques()
     withEnv(function()
         installTechWorld({ [0] = true, [1] = true }, 10, { [3] = true })
         GameInfo.BuildingClasses = infoTable({
-            { Type = "BUILDINGCLASS_LIBRARY", DefaultBuilding = "BUILDING_LIBRARY", MaxGlobalInstances = -1, MaxPlayerInstances = -1 },
+            {
+                Type = "BUILDINGCLASS_LIBRARY",
+                DefaultBuilding = "BUILDING_LIBRARY",
+                MaxGlobalInstances = -1,
+                MaxPlayerInstances = -1,
+            },
         })
         GameInfo.Buildings = infoTable({
-            { Type = "BUILDING_LIBRARY", BuildingClass = "BUILDINGCLASS_LIBRARY", PrereqTech = "TECH_WRITING", Description = "Library" },
-            { Type = "BUILDING_PAPER_MAKER", BuildingClass = "BUILDINGCLASS_LIBRARY", PrereqTech = "TECH_WRITING", Description = "Paper Maker" },
+            {
+                Type = "BUILDING_LIBRARY",
+                BuildingClass = "BUILDINGCLASS_LIBRARY",
+                PrereqTech = "TECH_WRITING",
+                Description = "Library",
+            },
+            {
+                Type = "BUILDING_PAPER_MAKER",
+                BuildingClass = "BUILDINGCLASS_LIBRARY",
+                PrereqTech = "TECH_WRITING",
+                Description = "Paper Maker",
+            },
         })
         GameInfo.Civilization_BuildingClassOverrides = infoTable({
-            { CivilizationType = "CIVILIZATION_CHINA", BuildingClassType = "BUILDINGCLASS_LIBRARY", BuildingType = "BUILDING_PAPER_MAKER" },
+            {
+                CivilizationType = "CIVILIZATION_CHINA",
+                BuildingClassType = "BUILDINGCLASS_LIBRARY",
+                BuildingType = "BUILDING_PAPER_MAKER",
+            },
         })
         GameInfo.UnitClasses = infoTable({ { Type = "UNITCLASS_SWORDSMAN", DefaultUnit = "UNIT_SWORDSMAN" } })
         GameInfo.Units = infoTable({
-            { Type = "UNIT_SWORDSMAN", Class = "UNITCLASS_SWORDSMAN", PrereqTech = "TECH_IRON_WORKING", Description = "Swordsman" },
-            { Type = "UNIT_LEGION", Class = "UNITCLASS_SWORDSMAN", PrereqTech = "TECH_IRON_WORKING", Description = "Legion" },
+            {
+                Type = "UNIT_SWORDSMAN",
+                Class = "UNITCLASS_SWORDSMAN",
+                PrereqTech = "TECH_IRON_WORKING",
+                Description = "Swordsman",
+            },
+            {
+                Type = "UNIT_LEGION",
+                Class = "UNITCLASS_SWORDSMAN",
+                PrereqTech = "TECH_IRON_WORKING",
+                Description = "Legion",
+            },
         })
         GameInfo.Civilization_UnitClassOverrides = infoTable({
             { CivilizationType = "CIVILIZATION_ROME", UnitClassType = "UNITCLASS_SWORDSMAN", UnitType = "UNIT_LEGION" },

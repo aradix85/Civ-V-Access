@@ -19,10 +19,12 @@ local queries = Rpc._queries
 -- civilization cannot build that class at all), else the class default.
 local function civBuildingType(civType, classType)
     local found, override = false, nil
-    for row in GameInfo.Civilization_BuildingClassOverrides({
-        CivilizationType = civType,
-        BuildingClassType = classType,
-    }) do
+    for row in
+        GameInfo.Civilization_BuildingClassOverrides({
+            CivilizationType = civType,
+            BuildingClassType = classType,
+        })
+    do
         found, override = true, row.BuildingType
     end
     if found then

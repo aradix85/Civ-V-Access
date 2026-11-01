@@ -55,6 +55,7 @@ read_globals = {
     "TaskTypes", "InfluenceLevelTypes",
     "OrderTypes", "ReligionTypes", "CityUpdateTypes",
     "MinorCivPersonalityTypes",
+    "CityAIFocusTypes", "MajorCivApproachTypes", "MinorCivTraitTypes",
 
     -- Platform / session / content
     "Modding", "Matchmaking", "Network", "Steam", "SaveFileList",
@@ -114,6 +115,10 @@ read_globals = {
     "GetProductionTooltip", "GetFoodTooltip", "GetGoldTooltip",
     "GetScienceTooltip", "GetCultureTooltip", "GetFaithTooltip",
     "GetTourismTooltip",
+
+    -- City-state quest text from the base CityStateStatusHelper, which
+    -- CivVAccess_QueryDiplo includes into the WorldView Context.
+    "GetActiveQuestToolTip",
 }
 
 -- Mod-authored module globals. Each file defines one of these at top level;
@@ -339,6 +344,10 @@ files["tests/"] = {
         -- Engine enums only the ChooseProduction suite needs; shimmed in
         -- that suite's setup rather than in the polyfill.
         "OrderTypes", "AdvisorTypes",
+        -- Engine enums and the quest-text helper the bridge-queries suite
+        -- shims in its setup.
+        "CityAIFocusTypes", "PolicyBranchTypes", "MajorCivApproachTypes",
+        "MinorCivTraitTypes", "GetActiveQuestToolTip",
         -- Engine enum the empire-status suites stub to cover GameOption-
         -- gated branches (NO_SCIENCE / NO_HAPPINESS / NO_RELIGION /
         -- NO_POLICIES). Read-only at top level; suites need write access.
