@@ -23,6 +23,8 @@ New Features and improvements:
 - The MCP bridge keeps notes per game: your strategy, standing orders and decisions.
 - The MCP bridge gives a briefing with warnings: starving cities, a treasury running out, enemies near cities, rivals close to winning.
 - The MCP bridge can read victory progress, why a leader feels the way they do, and the game's own rules text for anything.
+- The MCP bridge can read how the game was set up: era, map, difficulty, pace, victory types and game options.
+- The MCP bridge can explain a civilization: its leader's traits and its unique units, buildings and improvements.
 
 ## [2.4.0] - 2026-10-22
 

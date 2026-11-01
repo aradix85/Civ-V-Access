@@ -922,6 +922,17 @@ TOOLS = [
         "inputSchema": {"type": "object", "properties": {}, "required": []},
     },
     {
+        "name": "civ5_game_settings",
+        "description": (
+            "How this game was set up, as the game menu's details tab lists "
+            "it: starting era, map type and size, difficulty, pace and its "
+            "turn limit, the enabled victory types, the enabled game options "
+            "(Vox Populi's included, each with its help text), and how many "
+            "civilizations and city-states the game started with."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
         "name": "civ5_explain",
         "description": (
             "What something does, from this game's own rules text (Vox "
@@ -929,7 +940,10 @@ TOOLS = [
             "strength, moves, maintenance, the unlocking and obsoleting tech. "
             "Works for units, buildings, wonders, techs, policies, "
             "promotions, beliefs, improvements, resources, projects and "
-            "specialists. Prefer it over memory for rules questions."
+            "specialists. A civilization (by name, adjective or leader) "
+            "answers with its leader traits, unique units, buildings and "
+            "improvements and what each replaces. Prefer it over memory for "
+            "rules questions."
         ),
         "inputSchema": {
             "type": "object",
@@ -948,6 +962,7 @@ TOOLS = [
                         "resource",
                         "project",
                         "specialist",
+                        "civilization",
                     ],
                     "description": "Optional, when a name is ambiguous.",
                 },
@@ -967,6 +982,7 @@ PASSTHROUGH_TOOLS = {
     "civ5_diplomacy": ("diplomacy", None),
     "civ5_units": ("units", "filter"),
     "civ5_victory_progress": ("victory_progress", None),
+    "civ5_game_settings": ("game_settings", None),
 }
 
 ACTION_TOOLS = {
